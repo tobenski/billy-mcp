@@ -21,12 +21,12 @@ const READ_TOOLS = new Set([
   'list_bills', 'get_bill', 'list_bank_payments', 'list_balance_modifiers',
   'list_accounts', 'get_account', 'list_daybook_transactions', 'list_daybooks',
   'get_account_balances', 'list_postings', 'list_transactions',
-  'list_bank_lines', 'list_bank_line_matches', 'list_files', 'list_attachments',
+  'list_bank_lines', 'list_bank_line_matches', 'list_files', 'get_file', 'list_attachments',
   'billy_raw_request'
 ]);
 
 export function createReadOnlyServer(billy: BillyClient): McpServer {
-  const server = new McpServer({ name: 'billy-readonly', version: '0.3.2-worker.1' });
+  const server = new McpServer({ name: 'billy-readonly', version: '0.3.2-worker.2' });
   const register = server.registerTool.bind(server);
   server.registerTool = ((...args: Parameters<McpServer['registerTool']>) => {
     const tool = register(...args);

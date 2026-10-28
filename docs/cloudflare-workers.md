@@ -8,7 +8,7 @@ Login følger den tidligere beslutning om **ChatGPT + Cloudflare Access med Mana
 
 | Funktion | Adfærd |
 | --- | --- |
-| `/mcp` | Remote MCP over Streamable HTTP med 24 læseværktøjer. |
+| `/mcp` | Remote MCP over Streamable HTTP med 25 læseværktøjer. |
 | `billy_raw_request` | Kun GET-kald til Billy. |
 | `/health` | Beskyttet status, som viser `read-only` efter godkendt login. |
 | Scripts, upload og skriveværktøjer | Eksponeres ikke af Worker-versionen. |
@@ -16,6 +16,27 @@ Login følger den tidligere beslutning om **ChatGPT + Cloudflare Access med Mana
 | Lokal kontrol | Typecheck, tests med simuleret identitet/Billy-svar og Wrangler dry-run. |
 
 Tests med mocks og en vellykket build dokumenterer kodeforløbene. De dokumenterer ikke, at login fra ChatGPT eller forbindelsen til et rigtigt Billy-regnskab virker. De kontrolleres særskilt efter deployment.
+
+## Læsning af bilag og filoplysninger
+
+`list_attachments` henter som standard bilagstilknytninger og deres filoplysninger i samme Billy-kald. Filoplysninger omfatter blandt andet fil-id, filnavn, filtype, størrelse og downloadadresse, når Billy returnerer felterne. Dokumentindhold downloades ikke.
+
+| Parameter | Anvendelse |
+| --- | --- |
+| `ownerReference` | Bilag til eksempelvis `bill:<id>`, `invoice:<id>` eller `daybookTransaction:<id>`. Filteret sendes til Billy. |
+| `status: "all"` | Alle bilagstilknytninger inden for forespørgslen; standardværdien. |
+| `status: "handled"` | Bilag, som allerede er tilknyttet et dokument. |
+| `status: "unhandled"` | Bilag i indbakken uden dokumenttilknytning; kan ikke kombineres med `ownerReference`. |
+| `includeFiles: false` | Hent kun bilagstilknytningerne. |
+| `page`, `pageSize` | Den ønskede side og sidestørrelse. |
+
+Svaret bevarer Billys `meta.paging` og angiver dækningen i `coverage`. `hasMore` og `nextPage` viser, om der skal hentes flere sider; ukendt sidestatus angives som `null`. Antallet i Billys paginering vedrører bilagstilknytninger, ikke unikke filer. Hver fil medtages én gang på den aktuelle side, mens alle bilagstilknytninger bevares. Ved samling af flere sider kan samme fil-id forekomme igen og skal samles på tværs af siderne.
+
+Manglende filoplysninger vises i `fileErrors`, og `partial: true` markerer det ufuldstændige svar. De øvrige bilag bevares. `get_file` henter metadata for et kendt fil-id, som eksempelvis kommer fra en bilagstilknytning.
+
+`list_files` er fortsat Billys generelle filliste. En adgangsfejl her returneres som en fejl med vejledning til bilagsopslaget. Bilagsopslaget beskrives udtrykkeligt som filer fra bilagstilknytninger og er ikke dokumentation for en fuldstændig liste over alle filer i Billy. Filernes downloadadresser kan indeholde adgangsgivende tokens og bør behandles som følsomme links.
+
+Disse opslag følger Billys dokumentation for [attachments, relationer og files](https://www.billy.dk/api/).
 
 ## 1. Opret den nye Worker fra GitHub
 
@@ -110,7 +131,7 @@ Brug ChatGPT på web. Åbn **Plugins > + > Add custom MCP server**, og opret for
 
 Brug OAuth-registrering via Access. Kopiér den præcise **production redirect URI** fra forbindelsens administrationsside til den nye Access-apps **Allowed redirect URIs**. ChatGPT kan anvende forskellige callback-adresser afhængigt af OAuth-serverens metadata; brug den viste adresse. Billy API-nøglen skal blive i Workerens secret og skal ikke indtastes som OAuth client secret. [ChatGPT MCP-opsætning](https://developers.openai.com/api/docs/guides/custom-mcp-server) og [OAuth og redirect URI](https://developers.openai.com/plugins/build/auth).
 
-Gennemfør login, og kontrollér først, at forbindelsen viser **24 læseværktøjer**, uden `execute_script`, upload eller skriveværktøjer. Et efterfølgende kald til et læseværktøj er den første kontrol mod det rigtige Billy-regnskab. Vælg et afgrænset opslag, eksempelvis organisationens oplysninger.
+Gennemfør login, og kontrollér først, at forbindelsen viser **25 læseværktøjer**, uden `execute_script`, upload eller skriveværktøjer. Et efterfølgende kald til et læseværktøj er den første kontrol mod det rigtige Billy-regnskab. Vælg et afgrænset opslag, eksempelvis organisationens oplysninger.
 
 Hvis OAuth fejler, kontrollér den nye Workers adresse, den tilhørende Access-app, Managed OAuth og den præcise callback-adresse. Et `401`-svar til en ikke-logget-ind MCP-klient bør indeholde Access' OAuth-udfordring; følg discovery-adressen fra svaret ved fejlsøgning. Fejlen kan ikke afgøres ud fra lokale mocks alene. [Access' OAuth-forløb](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/).
 

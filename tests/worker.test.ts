@@ -126,7 +126,7 @@ test('MCP rejects untrusted and opaque browser Origins', async t => {
   assert.equal(outbound.mock.callCount(), 0);
 });
 
-test('initialization and discovery expose only the intended 24 reading tools', async t => {
+test('initialization and discovery expose only the intended 25 reading tools', async t => {
   const outbound = noNetwork(t);
   const initialized = await rpc('initialize', {
     protocolVersion: '2025-03-26',
@@ -142,7 +142,7 @@ test('initialization and discovery expose only the intended 24 reading tools', a
     'list_products', 'get_product', 'list_invoices', 'get_invoice', 'list_bills', 'get_bill',
     'list_bank_payments', 'list_balance_modifiers', 'list_accounts', 'get_account',
     'list_daybook_transactions', 'list_daybooks', 'get_account_balances', 'list_postings',
-    'list_transactions', 'list_bank_lines', 'list_bank_line_matches', 'list_files',
+    'list_transactions', 'list_bank_lines', 'list_bank_line_matches', 'list_files', 'get_file',
     'list_attachments', 'billy_raw_request',
   ];
   assert.deepEqual(tools.map((tool: any) => tool.name).sort(), expected.sort());

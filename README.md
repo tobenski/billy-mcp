@@ -3,10 +3,17 @@
 ## Cloudflare Workers read-only edition
 
 This fork adds a separate `/mcp` Worker entry point protected by **Cloudflare
-Access Managed OAuth** and a verified-email allowlist. It exposes 24 read-only
+Access Managed OAuth** and a verified-email allowlist. It exposes 25 read-only
 tools, enforces GET-only Billy requests, and excludes `execute_script`.
 See the [Danish setup guide](docs/cloudflare-workers.md) for the branch,
 deployment steps, required secrets, and ChatGPT connection checks.
+
+`list_attachments` includes file metadata by default and supports server-side
+document and inbox filters. Results retain attachment pagination and explicitly
+describe the current page's coverage; they are not an inventory of every file in
+Billy. `get_file` reads metadata for one known file ID. Neither tool downloads
+document content. The general `list_files` endpoint remains separate and may be
+denied by Billy even when attachment metadata is readable.
 
 The upstream local stdio implementation remains below. Its `execute_script`
 tool is **not a secure sandbox**: review reproduced bypasses of its read-only
