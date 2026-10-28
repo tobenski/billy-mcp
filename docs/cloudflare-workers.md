@@ -21,18 +21,29 @@ Tests med mocks og en vellykket build dokumenterer kodeforløbene. De dokumenter
 
 Åbn [Cloudflare-dashboardet](https://dash.cloudflare.com/), gå til **Workers & Pages**, og opret en ny Worker med GitHub-forbindelse. Vælg `tobenski/billy-mcp`. Hvis Cloudflare beder om GitHub-adgang, giv den adgang til dette repository.
 
-Brug følgende indstillinger i oprettelsen eller under den nye Workers **Settings > Build**:
+Brug følgende indstillinger ved oprettelsen eller under den nye Workers **Settings > Build/Builds**:
 
 | Felt | Værdi |
 | --- | --- |
 | Worker/project name | `billy-mcp-readonly` |
 | Git repository | `tobenski/billy-mcp` |
-| Git branch / production branch | `cloudflare/read-only-mcp` |
 | Root directory | `/` — repositoryets rod |
 | Build command | `npm run check:worker` |
 | Deploy command | `npm run deploy:worker` |
 
-Cloudflare installerer projektets afhængigheder og kører build før deployment. Buildkommandoen skal bestå, før du fortsætter. Git-forbindelsen kan efterfølgende deploye nye commits fra den valgte branch automatisk. [Buildindstillinger](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) og [GitHub-integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/).
+**Produktionsbranchen skal være `cloudflare/read-only-mcp`.** Oprettelsesskærmen viser ikke altid et branchfelt. Hvis feltet findes, vælg arbejdsgrenen dér. Ellers vælg **Deploy** med indstillingerne ovenfor og tomme buildvariabler, og skift derefter branch på det oprettede projekt:
+
+1. Åbn **Workers & Pages > billy-mcp-readonly > Settings > Build/Builds > Branch control**.
+2. Sæt **Production branch** til `cloudflare/read-only-mcp`.
+3. Gem ændringen.
+
+Cloudflare starter som udgangspunkt med repositoryets standardbranch. Så længe Worker-ændringerne ikke er flettet ind i `main`, mangler den branch kommandoen `check:worker`. Hvis første build stopper med `Missing script: "check:worker"`, kontrollér branchen og ret den som ovenfor. Fejlen betyder, at den valgte kode ikke indeholder buildkommandoen. [Branchindstillinger](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/).
+
+Hvis oprettelsesskærmen viser **Connection blocked**, kontrollér først under **Workers & Pages**, om `billy-mcp-readonly` allerede findes, og om dens Git-forbindelse er gemt under **Settings > Build/Builds**. Projekt og forbindelse kan være oprettet, selv om skærmen viser en fejl. Fejlteksten alene fortæller ikke, om årsagen er GitHub-adgang, buildtoken eller noget andet; se projektets faktiske indstillinger og eventuelle buildlogs, før du ændrer rettigheder eller opretter projektet igen.
+
+**Efter branchskiftet skal der startes et nyt build fra arbejdsgrenen.** Push en ny ændring til `cloudflare/read-only-mcp`, efter at indstillingen er gemt. Med Builds API kan et nyt build også startes med den konkrete branch og eventuelt et commit-SHA. Brug ikke **Retry** på det gamle `main`-build som metode til at skifte kode: en retry genkører den oprindelige commit, selv om aktuelle buildindstillinger anvendes. [Builds API](https://developers.cloudflare.com/workers/ci-cd/builds/api-reference/), [retry af builds](https://developers.cloudflare.com/changelog/post/2025-03-17-rerun-build/) og [buildindstillinger](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/).
+
+Cloudflare installerer projektets afhængigheder og kører build før deployment. Kontrollér, at et build fra `cloudflare/read-only-mcp` består og deployer den rigtige Worker, før du fortsætter til loginopsætningen. Git-forbindelsen kan efterfølgende deploye nye commits fra den valgte branch automatisk. [GitHub-integration](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/).
 
 Repositoryets `wrangler.jsonc` angiver:
 
