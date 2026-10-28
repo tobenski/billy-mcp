@@ -2,14 +2,34 @@ import { cap } from './tools/helpers.js';
 
 type Query = Record<string, string | number | boolean | undefined>;
 
+/** Explicit configuration keeps Worker credentials scoped to one request. */
+export interface BillyClientConfig {
+  accessToken: string;
+  baseUrl?: string;
+  locale?: string;
+  organizationId?: string;
+  readOnly?: boolean;
+  signal?: AbortSignal;
+  requestTimeoutMs?: number;
+}
+
 export class BillyClient {
   private readonly accessToken: string;
   private readonly baseUrl: string;
   private readonly locale?: string;
   private organizationId?: string;
+  private readonly readOnly: boolean;
+  private readonly signal?: AbortSignal;
+  private readonly requestTimeoutMs?: number;
 
-  constructor() {
-    const token = process.env.BILLY_ACCESS_TOKEN;
+  constructor(config?: BillyClientConfig) {
+    const options = config ?? {
+      accessToken: process.env.BILLY_ACCESS_TOKEN ?? '',
+      baseUrl: process.env.BILLY_BASE_URL,
+      locale: process.env.BILLY_LOCALE,
+      organizationId: process.env.BILLY_ORGANIZATION_ID
+    };
+    const token = options.accessToken?.trim();
     if (!token) {
       throw new Error(
         'Missing Billy access token. Set the BILLY_ACCESS_TOKEN environment variable ' +
@@ -17,9 +37,18 @@ export class BillyClient {
       );
     }
     this.accessToken = token;
-    this.baseUrl = (process.env.BILLY_BASE_URL ?? 'https://api.billysbilling.com/v2').replace(/\/$/, '');
-    this.locale = process.env.BILLY_LOCALE;
-    this.organizationId = process.env.BILLY_ORGANIZATION_ID || undefined;
+    this.baseUrl = (options.baseUrl ?? 'https://api.billysbilling.com/v2').replace(/\/$/, '');
+    this.locale = options.locale;
+    this.organizationId = options.organizationId || undefined;
+    this.readOnly = options.readOnly ?? false;
+    this.signal = options.signal;
+    this.requestTimeoutMs = options.requestTimeoutMs;
+  }
+
+  private requestSignal(): AbortSignal | undefined {
+    if (this.requestTimeoutMs === undefined) return this.signal;
+    const timeout = AbortSignal.timeout(this.requestTimeoutMs);
+    return this.signal ? AbortSignal.any([this.signal, timeout]) : timeout;
   }
 
   async request<T = any>(
@@ -27,7 +56,13 @@ export class BillyClient {
     path: string,
     opts: { body?: unknown; query?: Query } = {}
   ): Promise<T> {
+    if (this.readOnly && method !== 'GET') {
+      throw new Error('This Billy client is read-only: only GET requests are allowed.');
+    }
     const url = new URL(this.baseUrl + (path.startsWith('/') ? path : `/${path}`));
+    if (this.readOnly && (url.origin !== new URL(this.baseUrl).origin || !url.pathname.startsWith('/v2/'))) {
+      throw new Error('Read-only requests must stay within the Billy v2 API.');
+    }
     for (const [key, value] of Object.entries(opts.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
@@ -43,7 +78,10 @@ export class BillyClient {
       res = await fetch(url, {
         method,
         headers,
-        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+        signal: this.requestSignal(),
+        // A remote redirect must never receive the Billy credential.
+        ...(this.readOnly ? { redirect: 'manual' as const } : {})
       });
     } catch (err: any) {
       throw new Error(
@@ -89,6 +127,9 @@ export class BillyClient {
     bytes: Uint8Array,
     opts: { fileName: string; contentType: string; organizationId?: string }
   ): Promise<T> {
+    if (this.readOnly) {
+      throw new Error('This Billy client is read-only: file uploads are disabled.');
+    }
     const url = new URL(this.baseUrl + (path.startsWith('/') ? path : `/${path}`));
     const headers: Record<string, string> = {
       'X-Access-Token': this.accessToken,
@@ -98,7 +139,9 @@ export class BillyClient {
     };
     let res: Response;
     try {
-      res = await fetch(url, { method: 'POST', headers, body: bytes as unknown as BodyInit });
+      res = await fetch(url, {
+        method: 'POST', headers, body: bytes as unknown as BodyInit, signal: this.requestSignal()
+      });
     } catch (err: any) {
       const cause = err?.cause ? ` (${String(err.cause)})` : '';
       throw new Error(`Billy API POST ${path} network error: ${err?.message ?? String(err)}${cause}`);

@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "billy-mcp-readonly",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "define": {
+    "process.env.BILLY_WRITE_MODE": "\"read-only\""
+  },
+  "observability": { "enabled": false }
+}

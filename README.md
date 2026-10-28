@@ -1,5 +1,22 @@
 # billy-mcp — Billy (billy.dk) MCP Server for Claude & AI Assistants
 
+## Cloudflare Workers read-only edition
+
+This fork adds a separate `/mcp` Worker entry point protected by **Cloudflare
+Access Managed OAuth** and a verified-email allowlist. It exposes 24 read-only
+tools, enforces GET-only Billy requests, and excludes `execute_script`.
+See the [Danish setup guide](docs/cloudflare-workers.md) for the branch,
+deployment steps, required secrets, and ChatGPT connection checks.
+
+The upstream local stdio implementation remains below. Its `execute_script`
+tool is **not a secure sandbox**: review reproduced bypasses of its read-only
+and dry-run controls, and work continuing after its timeout. Do not rely on
+those controls when using the local script tool. This tool is not imported by
+the hosted Worker. Live Billy and ChatGPT OAuth verification is still required
+before using a deployment with real accounting data.
+
+---
+
 **Connect Claude, Cursor, VS Code, and any MCP-compatible AI assistant to [Billy](https://www.billy.dk/) — the Danish accounting platform (billysbilling).** Create invoices, book journal entries, check account balances, reconcile bank lines, and attach receipts — with built-in human-approval write protection so your AI never books anything without your sign-off.
 
 [![npm version](https://img.shields.io/npm/v/billy-mcp)](https://www.npmjs.com/package/billy-mcp)
