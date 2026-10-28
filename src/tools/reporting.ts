@@ -211,9 +211,9 @@ export function registerReportingTools(server: McpServer, billy: BillyClient): v
   server.registerTool(
     'list_bank_lines',
     {
-      description: 'List imported bank lines. Date and matched filters are applied client-side within the fetched page.',
+      description: 'List imported bank lines for a required bank account ID. Date and matched filters are applied client-side within the fetched page.',
       inputSchema: z.object({
-        accountId: z.string().optional().describe('Filter by bank account ID (server-side)'),
+        accountId: z.string().trim().min(1).describe('Required bank account ID (server-side); use list_accounts to find it'),
         minEntryDate: z.string().optional().describe('Entry date >= this (client-side, within page)'),
         maxEntryDate: z.string().optional().describe('Entry date <= this (client-side, within page)'),
         matched: z.boolean().optional().describe('true = only lines with a match, false = only unmatched (client-side)'),
@@ -246,9 +246,9 @@ export function registerReportingTools(server: McpServer, billy: BillyClient): v
   server.registerTool(
     'list_bank_line_matches',
     {
-      description: 'List bank line matches (bank reconciliation groupings). isApproved filter applied client-side within the page.',
+      description: 'List bank line matches (bank reconciliation groupings) for a required bank account ID. isApproved filter applied client-side within the page.',
       inputSchema: z.object({
-        accountId: z.string().optional().describe('Filter by bank account ID (server-side)'),
+        accountId: z.string().trim().min(1).describe('Required bank account ID (server-side); use list_accounts to find it'),
         isApproved: z.boolean().optional().describe('Filter by approval status (client-side, within page)'),
         ...pagingShape,
         ...verbosityShape

@@ -39,7 +39,7 @@ export class BillyClient {
     this.accessToken = token;
     this.baseUrl = (options.baseUrl ?? 'https://api.billysbilling.com/v2').replace(/\/$/, '');
     this.locale = options.locale;
-    this.organizationId = options.organizationId || undefined;
+    this.organizationId = options.organizationId?.trim() || undefined;
     this.readOnly = options.readOnly ?? false;
     this.signal = options.signal;
     this.requestTimeoutMs = options.requestTimeoutMs;
@@ -184,23 +184,17 @@ export class BillyClient {
     return all;
   }
 
-  /** Returns the configured organization id, or resolves and caches it from /organizations. */
+  /** Returns the configured organization id, or resolves this company token via /organization. */
   async getOrganizationId(): Promise<string> {
     if (this.organizationId) return this.organizationId;
-    const res = await this.get<{ organizations: Array<{ id: string; name?: string }> }>('/organizations');
-    const orgs = res.organizations ?? [];
-    if (orgs.length === 0) {
-      throw new Error('Could not resolve organization: /organizations returned no records.');
+    // Company access tokens can read their own organization, but cannot list
+    // the user's organizations. Keep the resolved id on this client only.
+    const res = await this.get<{ organization?: { id?: unknown } }>('/organization');
+    const id = res?.organization?.id;
+    if (typeof id !== 'string' || !id.trim()) {
+      throw new Error('Could not resolve organization: /organization did not return a valid organization id.');
     }
-    if (orgs.length > 1) {
-      const ids = orgs.map((o) => (o.name ? `${o.id} (${o.name})` : o.id));
-      throw new Error(
-        'Multiple organizations found for this token. Set BILLY_ORGANIZATION_ID to choose one: ' +
-          ids.join(', ')
-      );
-    }
-    const org = orgs[0];
-    this.organizationId = org.id;
-    return org.id;
+    this.organizationId = id.trim();
+    return this.organizationId;
   }
 }

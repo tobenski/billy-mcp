@@ -112,12 +112,13 @@ export function registerPaymentTools(server: McpServer, billy: BillyClient): voi
     'list_balance_modifiers',
     {
       description:
-        "List balance modifiers (payment associations) in Billy. Filter by subjectReference like 'invoice:<id>' or 'bill:<id>' to see which payments settled a specific invoice or bill. NOTE: subjectReference is not documented server-side; it is also enforced client-side within the fetched page.",
+        "List balance modifiers (payment associations) in Billy for a required subjectReference like 'invoice:<id>' or 'bill:<id>'. Unfiltered listing is not supported. NOTE: subjectReference is not documented server-side; it is also enforced client-side within the fetched page.",
       inputSchema: z.object({
         subjectReference: z
           .string()
-          .optional()
-          .describe("Subject reference, e.g. 'invoice:abc123' or 'bill:xyz789' (also applied client-side within the fetched page)"),
+          .trim()
+          .min(1)
+          .describe("Required subject reference, e.g. 'invoice:abc123' or 'bill:xyz789' (also applied client-side within the fetched page)"),
         ...pagingShape,
         ...verbosityShape
       }),

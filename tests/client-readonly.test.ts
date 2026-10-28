@@ -58,14 +58,82 @@ test('explicit configuration never inherits another process token, organization,
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
     assert.equal(url.origin, 'https://api.billysbilling.com');
-    assert.equal(url.pathname, '/v2/organizations');
+    assert.equal(url.pathname, '/v2/organization');
     assert.ok(headers.get('X-Access-Token') === 'synthetic-explicit-token', 'The explicit client credential must be used');
     assert.equal(headers.get('Accept-Language'), null);
-    return Response.json({ organizations: [{ id: 'resolved-explicit-organization' }] });
+    return Response.json({ organization: { id: 'resolved-explicit-organization' } });
   });
   const client = new BillyClient({ accessToken: 'synthetic-explicit-token', readOnly: true });
   assert.equal(await client.getOrganizationId(), 'resolved-explicit-organization');
   assert.equal(outbound.mock.callCount(), 1);
+});
+
+test('company organization resolution uses the singular endpoint and caches a valid id', async t => {
+  const outbound = t.mock.method(globalThis, 'fetch', async input => {
+    const path = new URL(String(input)).pathname;
+    if (path === '/v2/organizations') {
+      return Response.json({ errorCode: 'ACCESS_RESTRICTED' }, { status: 403 });
+    }
+    assert.equal(path, '/v2/organization');
+    return Response.json({ organization: { id: 'company-organization' } });
+  });
+  const client = new BillyClient({ accessToken: 'synthetic-company-token', readOnly: true });
+  assert.equal(await client.getOrganizationId(), 'company-organization');
+  assert.equal(await client.getOrganizationId(), 'company-organization');
+  assert.equal(outbound.mock.callCount(), 1);
+});
+
+test('an explicit organization id takes precedence without an organization lookup', async t => {
+  const outbound = t.mock.method(globalThis, 'fetch', async () => {
+    throw new Error('An explicitly configured organization must not need a lookup');
+  });
+  const client = new BillyClient({
+    accessToken: 'synthetic-company-token',
+    organizationId: ' configured-organization ',
+    readOnly: true,
+  });
+  assert.equal(await client.getOrganizationId(), 'configured-organization');
+  assert.equal(outbound.mock.callCount(), 0);
+});
+
+test('a blank configured organization id is resolved from the company token', async t => {
+  const outbound = t.mock.method(globalThis, 'fetch', async input => {
+    assert.equal(new URL(String(input)).pathname, '/v2/organization');
+    return Response.json({ organization: { id: 'resolved-organization' } });
+  });
+  const client = new BillyClient({
+    accessToken: 'synthetic-company-token',
+    organizationId: ' \t ',
+    readOnly: true,
+  });
+  assert.equal(await client.getOrganizationId(), 'resolved-organization');
+  assert.equal(outbound.mock.callCount(), 1);
+});
+
+test('missing or invalid organization ids fail without caching a malformed response', async t => {
+  const invalidResponses: unknown[] = [
+    null,
+    {},
+    { organization: null },
+    { organization: {} },
+    { organization: { id: null } },
+    { organization: { id: '' } },
+    { organization: { id: ' \t ' } },
+    { organization: { id: 42 } },
+    { organization: { id: ['invalid-id'] } },
+  ];
+  let response: unknown;
+  const outbound = t.mock.method(globalThis, 'fetch', async input => {
+    assert.equal(new URL(String(input)).pathname, '/v2/organization');
+    return Response.json(response);
+  });
+  const client = new BillyClient({ accessToken: 'synthetic-company-token', readOnly: true });
+  for (response of invalidResponses) {
+    await assert.rejects(() => client.getOrganizationId(), /did not return a valid organization id/);
+  }
+  response = { organization: { id: 'valid-organization' } };
+  assert.equal(await client.getOrganizationId(), 'valid-organization');
+  assert.equal(outbound.mock.callCount(), invalidResponses.length + 1);
 });
 
 test('an empty explicitly supplied token cannot fall back to process credentials', t => {

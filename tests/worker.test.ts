@@ -184,12 +184,41 @@ test('concurrent requests keep their Billy credentials and resolved organization
     const path = new URL(String(input)).pathname;
     observed.push({ organization, path });
     await Promise.resolve();
-    assert.ok(path === '/v2/organizations' || path === `/v2/organizations/${organization}`);
-    return Response.json({ organizations: [{ id: organization }] });
+    assert.ok(path === '/v2/organization' || path === `/v2/organizations/${organization}`);
+    return Response.json({ organization: { id: organization } });
   });
   const result = await Promise.all(['a', 'b'].map(suffix => rpc('tools/call', {
     name: 'get_organization', arguments: {},
   }, { env: { ...baseEnv, BILLY_ACCESS_TOKEN: `synthetic-user-${suffix}`, BILLY_ORGANIZATION_ID: '' } })));
-  assert.deepEqual(result.map(message => JSON.parse(message.result.content[0].text).organizations[0].id), ['organization-a', 'organization-b']);
+  assert.deepEqual(result.map(message => JSON.parse(message.result.content[0].text).organization.id), ['organization-a', 'organization-b']);
   assert.equal(observed.length, 4);
+});
+
+test('a list tool works for a company token when the organization collection is forbidden', async t => {
+  const outbound = t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const url = new URL(String(input));
+    assert.equal(init?.method, 'GET');
+    if (url.pathname === '/v2/organizations') {
+      return Response.json({ errorCode: 'ACCESS_RESTRICTED' }, { status: 403 });
+    }
+    if (url.pathname === '/v2/organization') {
+      return Response.json({ organization: { id: 'resolved-company' } });
+    }
+    assert.equal(url.pathname, '/v2/accounts');
+    assert.equal(url.searchParams.get('organizationId'), 'resolved-company');
+    assert.equal(url.searchParams.get('page'), '1');
+    assert.equal(url.searchParams.get('pageSize'), '2');
+    return Response.json({
+      meta: { paging: { page: 1, pageSize: 2, pageCount: 1, total: 1 } },
+      accounts: [{ id: 'test-account', organizationId: 'resolved-company', accountNo: 1000, name: 'Test account' }],
+    });
+  });
+  const message = await rpc('tools/call', {
+    name: 'list_accounts', arguments: { page: 1, pageSize: 2 },
+  }, { env: { ...baseEnv, BILLY_ORGANIZATION_ID: '' } });
+  assert.equal(message.result?.isError, undefined);
+  const body = JSON.parse(message.result.content[0].text);
+  assert.deepEqual(body.accounts, [{ id: 'test-account', accountNo: 1000, name: 'Test account' }]);
+  assert.equal(body.meta.paging.total, 1);
+  assert.equal(outbound.mock.callCount(), 2);
 });
