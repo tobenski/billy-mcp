@@ -20,8 +20,16 @@ export function registerInvoiceTools(server: McpServer, billy: BillyClient): voi
         state: z.enum(['draft', 'approved', 'voided']).optional().describe('Filter by invoice state'),
         invoiceNo: z.string().optional().describe('Filter by exact invoice number'),
         isPaid: z.boolean().optional().describe('Filter by paid status'),
+        creditedInvoiceId: z.string().trim().min(1).optional().describe('Credit notes for this invoice ID'),
+        currencyId: z.string().trim().min(1).optional().describe('Filter by invoice currency ID'),
         minEntryDate: z.string().optional().describe('Invoice date >= this (YYYY-MM-DD)'),
         maxEntryDate: z.string().optional().describe('Invoice date <= this (YYYY-MM-DD)'),
+        minDueDate: z.string().optional().describe('Due date >= this (YYYY-MM-DD)'),
+        maxDueDate: z.string().optional().describe('Due date <= this (YYYY-MM-DD)'),
+        entryDatePeriod: z.string().trim().min(1).optional().describe('Billy date period, for example month:2026-01'),
+        approvedTimePeriod: z.string().trim().min(1).optional().describe('Billy approval-time period'),
+        recurringInvoiceId: z.string().trim().min(1).optional().describe('Filter by recurring invoice ID'),
+        quoteId: z.string().trim().min(1).optional().describe('Filter by quote ID'),
         q: z.string().optional().describe('Free-text search'),
         sortProperty: z.string().optional().describe("Sort field, e.g. 'entryDate', 'createdTime'"),
         sortDirection: z.enum(['ASC', 'DESC']).optional().describe('Sort direction'),
@@ -48,19 +56,25 @@ export function registerInvoiceTools(server: McpServer, billy: BillyClient): voi
   server.registerTool(
     'get_invoice',
     {
-      description: 'Get a single Billy invoice by ID, including its lines, balance and paid status.',
+      description: 'Read one Billy invoice and one page of its native lines. Preserves all fields and separate line pagination; use list_invoice_lines for further pages. Balances are Billy source values, not calculated here.',
       inputSchema: z.object({
-        id: z.string().describe('Invoice ID')
+        id: z.string().trim().min(1).refine(id => id !== '.' && id !== '..' && !/[\\/?#\s]/.test(id), 'Provide one invoice ID').describe('Invoice ID'),
+        linePage: z.number().int().min(1).optional(),
+        linePageSize: z.number().int().min(1).max(1000).optional()
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ id }) => {
+    async ({ id, linePage, linePageSize }) => {
       try {
         const [invoice, lines] = await Promise.all([
-          billy.get(`/invoices/${id}`),
-          billy.get('/invoiceLines', { invoiceId: id })
+          billy.get(`/invoices/${encodeURIComponent(id)}`),
+          billy.get('/invoiceLines', { invoiceId: id, page: linePage ?? 1, pageSize: linePageSize ?? DEFAULT_PAGE_SIZE })
         ]);
-        return jsonResult({ invoice: invoice.invoice, invoiceLines: lines.invoiceLines });
+        if (invoice?.invoice?.id !== id || !Array.isArray(lines?.invoiceLines) ||
+            lines.invoiceLines.some((line: any) => !line || line.invoiceId !== id)) {
+          throw new Error('Billy returned an invalid invoice or lines outside the requested invoice.');
+        }
+        return jsonResult({ ...invoice, invoiceLines: lines.invoiceLines, invoiceLinesMeta: lines.meta ?? null });
       } catch (e) {
         return errorResult(e);
       }

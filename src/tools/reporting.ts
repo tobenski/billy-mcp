@@ -102,32 +102,44 @@ export function registerReportingTools(server: McpServer, billy: BillyClient): v
     'list_postings',
     {
       description:
-        'List ledger postings (individual debit/credit entries). For balances/aggregates use get_account_balances instead. Date/void/text filters are applied client-side within the fetched page — narrow with accountId.',
+        'Read native ledger postings with Billy date, status and search filters. Returns source amounts without calculating balances. The optional legacy text substring filter applies within the returned page; use q for Billy search.',
       inputSchema: z.object({
         accountId: z.string().optional().describe('Filter by account ID (server-side)'),
-        minEntryDate: z.string().optional().describe('Posting date >= this (client-side, within page)'),
-        maxEntryDate: z.string().optional().describe('Posting date <= this (client-side, within page)'),
-        isVoided: z.boolean().optional().describe('Filter by voided status (client-side, within page)'),
+        minEntryDate: z.string().optional().describe('Posting date >= this (Billy server filter)'),
+        maxEntryDate: z.string().optional().describe('Posting date <= this (Billy server filter)'),
+        entryDatePeriod: z.string().trim().min(1).optional().describe('Billy date period, for example month:2026-01'),
+        isVoided: z.boolean().optional().describe('Billy filter by voided status'),
+        isBankMatched: z.boolean().optional().describe('Billy filter by its recorded bank-match status'),
+        isNotZero: z.boolean().optional().describe('Billy filter for nonzero postings'),
+        q: z.string().trim().min(1).optional().describe('Billy search across posting text and originator name'),
         text: z.string().optional().describe('Substring match on posting text — searches LINE-LEVEL text (client-side, within page)'),
         ...pagingShape,
         ...verbosityShape
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ accountId, minEntryDate, maxEntryDate, isVoided, text, page, pageSize, verbose }) => {
+    async ({ text, page, pageSize, verbose, ...filters }) => {
       try {
         const organizationId = await billy.getOrganizationId();
         const data = await billy.get('/postings', {
           organizationId,
-          accountId,
+          ...filters,
           page,
           pageSize: pageSize ?? DEFAULT_PAGE_SIZE
         });
         const clientSide: string[] = [];
-        let postings: any[] = data.postings ?? [];
-        if (minEntryDate) (clientSide.push('minEntryDate'), (postings = postings.filter((p) => p.entryDate >= minEntryDate)));
-        if (maxEntryDate) (clientSide.push('maxEntryDate'), (postings = postings.filter((p) => p.entryDate <= maxEntryDate)));
-        if (isVoided !== undefined) (clientSide.push('isVoided'), (postings = postings.filter((p) => p.isVoided === isVoided)));
+        if (!Array.isArray(data.postings) || data.postings.some((p: any) => !p || typeof p !== 'object' || Array.isArray(p))) {
+          throw new Error('Billy did not return a valid postings array.');
+        }
+        let postings: any[] = data.postings;
+        if (postings.some(p =>
+          (filters.accountId && p.accountId !== filters.accountId) ||
+          (filters.minEntryDate && (typeof p.entryDate !== 'string' || p.entryDate < filters.minEntryDate)) ||
+          (filters.maxEntryDate && (typeof p.entryDate !== 'string' || p.entryDate > filters.maxEntryDate)) ||
+          (filters.isVoided !== undefined && p.isVoided !== filters.isVoided) ||
+          (filters.isBankMatched !== undefined && p.isBankMatched !== filters.isBankMatched))) {
+          throw new Error('Billy returned postings outside the requested account, date or status filter.');
+        }
         if (text) {
           clientSide.push('text');
           const needle = text.toLowerCase();
@@ -135,13 +147,13 @@ export function registerReportingTools(server: McpServer, billy: BillyClient): v
         }
         const shaped = verbose
           ? { ...data, postings }
-          : compactResponse({ ...data, postings }, { postings: ['id', 'entryDate', 'text', 'accountId', 'amount', 'side', 'isVoided', 'transactionId'] });
+          : compactResponse({ ...data, postings }, { postings: ['id', 'entryDate', 'text', 'accountId', 'amount', 'side', 'currencyId', 'isVoided', 'isBankMatched', 'transactionId', 'salesTaxReturnId'] });
         return jsonResult({
           appliedFilters: {
-            serverSide: ['organizationId', ...(accountId ? ['accountId'] : [])],
+            serverSide: ['organizationId', ...Object.keys(filters).filter(key => filters[key as keyof typeof filters] !== undefined)],
             clientSide,
             ...(clientSide.length > 0
-              ? { note: 'client-side filters apply within the fetched page only — narrow with accountId or use get_account_balances for aggregates' }
+              ? { note: 'The legacy text substring filter applies within this page only; follow meta.paging or use the native q filter.' }
               : {})
           },
           ...(shaped as Record<string, unknown>)
@@ -211,30 +223,46 @@ export function registerReportingTools(server: McpServer, billy: BillyClient): v
   server.registerTool(
     'list_bank_lines',
     {
-      description: 'List imported bank lines for a required bank account ID. Date and matched filters are applied client-side within the fetched page.',
+      description: 'Read one page of native bank lines for a required account. Billy applies date, reconciliation, receipt and amount filters. Source balances/statuses are returned unchanged; no reconciliation is performed. The legacy matched filter checks matchId only within this page.',
       inputSchema: z.object({
         accountId: z.string().trim().min(1).describe('Required bank account ID (server-side); use list_accounts to find it'),
-        minEntryDate: z.string().optional().describe('Entry date >= this (client-side, within page)'),
-        maxEntryDate: z.string().optional().describe('Entry date <= this (client-side, within page)'),
+        minEntryDate: z.string().optional().describe('Entry date >= this (Billy server filter)'),
+        maxEntryDate: z.string().optional().describe('Entry date <= this (Billy server filter)'),
+        entryDatePeriod: z.string().trim().min(1).optional().describe('Billy date period'),
+        isReconciled: z.boolean().optional().describe('Billy recorded reconciliation status'),
+        status: z.enum(['pending', 'booked']).optional().describe('Billy bank-line status (API defaults to booked)'),
+        side: z.enum(['debit', 'credit']).optional(),
+        receiptState: z.string().trim().min(1).optional().describe('Billy receipt state, for example missing_receipt'),
+        minAmount: z.number().optional(),
+        maxAmount: z.number().optional(),
+        q: z.string().trim().min(1).optional().describe('Billy search on description or amount'),
+        sortProperty: z.enum(['entryDate', 'amount']).optional(),
+        sortDirection: z.enum(['ASC', 'DESC']).optional(),
         matched: z.boolean().optional().describe('true = only lines with a match, false = only unmatched (client-side)'),
         ...pagingShape,
         ...verbosityShape
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ accountId, minEntryDate, maxEntryDate, matched, page, pageSize, verbose }) => {
+    async ({ accountId, matched, page, pageSize, verbose, ...filters }) => {
       try {
-        const data = await billy.get('/bankLines', { accountId, page, pageSize: pageSize ?? DEFAULT_PAGE_SIZE });
+        const data = await billy.get('/bankLines', { accountId, ...filters, page, pageSize: pageSize ?? DEFAULT_PAGE_SIZE });
         const clientSide: string[] = [];
-        let bankLines: any[] = data.bankLines ?? [];
-        if (minEntryDate) (clientSide.push('minEntryDate'), (bankLines = bankLines.filter((l) => l.entryDate >= minEntryDate)));
-        if (maxEntryDate) (clientSide.push('maxEntryDate'), (bankLines = bankLines.filter((l) => l.entryDate <= maxEntryDate)));
+        if (!Array.isArray(data.bankLines) || data.bankLines.some((line: any) => !line || typeof line !== 'object' || Array.isArray(line))) {
+          throw new Error('Billy did not return a valid bankLines array.');
+        }
+        let bankLines: any[] = data.bankLines;
+        if (bankLines.some(line => line.accountId !== accountId ||
+          (filters.minEntryDate && (typeof line.entryDate !== 'string' || line.entryDate < filters.minEntryDate)) ||
+          (filters.maxEntryDate && (typeof line.entryDate !== 'string' || line.entryDate > filters.maxEntryDate)))) {
+          throw new Error('Billy returned bank lines outside the requested account or date filter.');
+        }
         if (matched !== undefined) (clientSide.push('matched'), (bankLines = bankLines.filter((l) => Boolean(l.matchId) === matched)));
         const shaped = verbose
           ? { ...data, bankLines }
-          : compactResponse({ ...data, bankLines }, { bankLines: ['id', 'accountId', 'entryDate', 'description', 'amount', 'side', 'matchId'] });
+          : compactResponse({ ...data, bankLines }, { bankLines: ['id', 'accountId', 'entryDate', 'description', 'amount', 'balance', 'side', 'matchId', 'status', 'receiptState'] });
         return jsonResult({
-          appliedFilters: { serverSide: [...(accountId ? ['accountId'] : [])], clientSide },
+          appliedFilters: { serverSide: ['accountId', ...Object.keys(filters).filter(key => filters[key as keyof typeof filters] !== undefined)], clientSide },
           ...(shaped as Record<string, unknown>)
         });
       } catch (e) {

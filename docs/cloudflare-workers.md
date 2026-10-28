@@ -8,14 +8,45 @@ Login følger den tidligere beslutning om **ChatGPT + Cloudflare Access med Mana
 
 | Funktion | Adfærd |
 | --- | --- |
-| `/mcp` | Remote MCP over Streamable HTTP med 25 læseværktøjer. |
+| `/mcp` | Remote MCP over Streamable HTTP med 51 værktøjer til dataadgang. |
 | `billy_raw_request` | Kun GET-kald til Billy. |
 | `/health` | Beskyttet status, som viser `read-only` efter godkendt login. |
 | Scripts, upload og skriveværktøjer | Eksponeres ikke af Worker-versionen. |
+| Beregninger og analyse | Foregår i chatten. `get_account_balances` eksponeres ikke af Worker-versionen. |
 | Regnskab | Én Billy-nøgle til ét regnskab. Alle tilladte brugere får adgang til samme regnskab. |
 | Lokal kontrol | Typecheck, tests med simuleret identitet/Billy-svar og Wrangler dry-run. |
 
 Tests med mocks og en vellykket build dokumenterer kodeforløbene. De dokumenterer ikke, at login fra ChatGPT eller forbindelsen til et rigtigt Billy-regnskab virker. De kontrolleres særskilt efter deployment.
+
+## Arbejdsdeling: MCP henter data, chatten analyserer
+
+Worker-forbindelsen leverer regnskabets kildedata. Den beregner ikke saldi, primo/ultimo, nøgletal, aldersfordelinger, momsafstemninger eller afvigelsesvurderinger. Den tidligere `get_account_balances` er fjernet fra denne forbindelses tilladte værktøjer. Den upstream lokale stdio-udgave er et separat produkt og kan fortsat indeholde beregningsværktøjer.
+
+Beløb, restsaldi, statusfelter og rapporter, som Billy selv returnerer, videresendes som kildedata. Eksempelvis bevarer `get_sales_tax_return` Billys egne `report`- og `corrections`-felter. Transportvalidering, filtrering, sideoplysninger og matchning af fil-id til bilagsreference er teknisk datahåndtering; økonomiske konklusioner dannes i chatten.
+
+De 27 nye værktøjer returnerer hele Billy-svaret uændret efter struktur- og scopevalidering. Et listekald henter én side med `page`/`pageSize`; `meta.paging` bevares, og der foretages ingen skjult gennemgang af alle sider. De eksisterende værktøjer med `verbose`-parameter giver alle Billy-felter ved `verbose: true`. API-fejl vises som fejl, aldrig som en tom liste eller et beregnet nul.
+
+### Nye native læseværktøjer
+
+| Område | Værktøjer | Afgrænsning |
+| --- | --- | --- |
+| Kontostruktur | `list_account_groups`, `list_account_natures` | Tilknyttet organisation henholdsvis global definition. |
+| Finans- og kladdedetaljer | `get_transaction`, `get_posting`, `get_daybook_transaction`, `list_daybook_transaction_lines`, `list_daybook_balance_accounts` | Enkelt-id, `daybookTransactionId` eller `daybookId`. |
+| Bankrelationer | `get_bank_line_match`, `list_bank_line_subject_associations` | Enkelt-id eller `matchId`. |
+| Dokumentlinjer | `list_invoice_lines`, `list_bill_lines` | `invoiceId` eller `billId`. |
+| Kontaktbevægelser | `list_contact_balance_postings`, `list_contact_balance_payments` | `contactId`. |
+| Rykkere og hændelser | `list_invoice_late_fees`, `list_invoice_reminders`, `list_invoice_reminder_associations`, `list_invoice_logs` | Faktura, organisation eller `reminderId` efter værktøjets schema. |
+| Momsopsætning | `list_tax_rates`, `list_tax_rate_deduction_components`, `list_sales_tax_accounts`, `list_sales_tax_meta_fields`, `list_sales_tax_rulesets`, `list_sales_tax_rules` | Organisation, `taxRateId` eller `rulesetId`. |
+| Momsperioder og betalinger | `list_sales_tax_returns`, `get_sales_tax_return`, `list_sales_tax_payments` | Organisation, enkelt-id eller **`returnId`**. |
+| Valuta | `list_currencies` | Globale valutadefinitioner; ingen omregning i MCP. |
+
+`list_postings` videresender nu Billys dato-, status- og søgefiltre. `list_bank_lines` understøtter blandt andet `isReconciled`, `status`, `receiptState`, dato- og beløbsgrænser. Det eksisterende `matched`-filter betyder fortsat kun tilstedeværelse af `matchId` inden for siden; det er ikke det samme som godkendt afstemning. Det eksisterende `text`-filter på posteringer er ligeledes et filter inden for siden; `q` er Billys native søgning.
+
+Faktura-/regningslister har yderligere native filtre for forfald, kreditreferencer, valuta og bilagstilknytning, hvor Billy understøtter dem. Bilagslisten understøtter også Billys egne dokument- og dubletfiltre. En dubletmarkering fra Billy videresendes som kildedata; MCP'en foretager ingen selvstændig dubletanalyse.
+
+`get_invoice` og `get_bill` henter dokumentet og én linjeside. Brug `linePage` og `linePageSize` ved detaljeopslaget eller de nye linjeværktøjer til videre hentning. Headerens metadata bevares, og linjernes metadata vises separat i `invoiceLinesMeta`/`billLinesMeta`. En enkelt side må ikke behandles som dokumentation for, at hele datasættet er hentet.
+
+Adgangen omfatter de data, Billys API og den tilknyttede nøgle faktisk tillader. Den tidligere 403 på den generelle `/files`-liste ændres ikke af udvidelsen. Ingen rettigheder, OAuth-politikker eller legitimationsoplysninger ændres.
 
 ## Læsning af bilag og filoplysninger
 
@@ -131,7 +162,7 @@ Brug ChatGPT på web. Åbn **Plugins > + > Add custom MCP server**, og opret for
 
 Brug OAuth-registrering via Access. Kopiér den præcise **production redirect URI** fra forbindelsens administrationsside til den nye Access-apps **Allowed redirect URIs**. ChatGPT kan anvende forskellige callback-adresser afhængigt af OAuth-serverens metadata; brug den viste adresse. Billy API-nøglen skal blive i Workerens secret og skal ikke indtastes som OAuth client secret. [ChatGPT MCP-opsætning](https://developers.openai.com/api/docs/guides/custom-mcp-server) og [OAuth og redirect URI](https://developers.openai.com/plugins/build/auth).
 
-Gennemfør login, og kontrollér først, at forbindelsen viser **25 læseværktøjer**, uden `execute_script`, upload eller skriveværktøjer. Et efterfølgende kald til et læseværktøj er den første kontrol mod det rigtige Billy-regnskab. Vælg et afgrænset opslag, eksempelvis organisationens oplysninger.
+Gennemfør login, og kontrollér først, at forbindelsen viser **51 værktøjer til dataadgang**, uden `get_account_balances`, `execute_script`, upload eller skriveværktøjer. Et efterfølgende kald til et læseværktøj er den første kontrol mod det rigtige Billy-regnskab. Vælg et afgrænset opslag, eksempelvis organisationens oplysninger. En klient med en tidligere indlæst værktøjsliste kan fortsat vise gamle navne, indtil dens liste er opdateret; serverens tilladte værktøjer gælder uanset klientens cache.
 
 Hvis OAuth fejler, kontrollér den nye Workers adresse, den tilhørende Access-app, Managed OAuth og den præcise callback-adresse. Et `401`-svar til en ikke-logget-ind MCP-klient bør indeholde Access' OAuth-udfordring; følg discovery-adressen fra svaret ved fejlsøgning. Fejlen kan ikke afgøres ud fra lokale mocks alene. [Access' OAuth-forløb](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/).
 

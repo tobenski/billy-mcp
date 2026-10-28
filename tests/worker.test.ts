@@ -126,7 +126,7 @@ test('MCP rejects untrusted and opaque browser Origins', async t => {
   assert.equal(outbound.mock.callCount(), 0);
 });
 
-test('initialization and discovery expose only the intended 25 reading tools', async t => {
+test('initialization and discovery expose only the intended 51 data-reading tools', async t => {
   const outbound = noNetwork(t);
   const initialized = await rpc('initialize', {
     protocolVersion: '2025-03-26',
@@ -141,18 +141,27 @@ test('initialization and discovery expose only the intended 25 reading tools', a
     'get_organization', 'list_contacts', 'get_contact', 'list_contact_persons',
     'list_products', 'get_product', 'list_invoices', 'get_invoice', 'list_bills', 'get_bill',
     'list_bank_payments', 'list_balance_modifiers', 'list_accounts', 'get_account',
-    'list_daybook_transactions', 'list_daybooks', 'get_account_balances', 'list_postings',
+    'list_daybook_transactions', 'list_daybooks', 'list_postings',
     'list_transactions', 'list_bank_lines', 'list_bank_line_matches', 'list_files', 'get_file',
     'list_attachments', 'billy_raw_request',
+    'list_account_groups', 'list_account_natures', 'list_daybook_transaction_lines',
+    'list_daybook_balance_accounts', 'get_daybook_transaction', 'get_transaction', 'get_posting',
+    'get_bank_line_match', 'list_bank_line_subject_associations',
+    'list_invoice_lines', 'list_bill_lines', 'list_contact_balance_postings',
+    'list_contact_balance_payments', 'list_invoice_late_fees', 'list_invoice_reminders',
+    'list_invoice_reminder_associations', 'list_invoice_logs',
+    'list_tax_rates', 'list_tax_rate_deduction_components', 'list_sales_tax_accounts',
+    'list_sales_tax_meta_fields', 'list_sales_tax_returns', 'get_sales_tax_return',
+    'list_sales_tax_payments', 'list_sales_tax_rulesets', 'list_sales_tax_rules', 'list_currencies',
   ];
   assert.deepEqual(tools.map((tool: any) => tool.name).sort(), expected.sort());
   assert.ok(tools.every((tool: any) => tool.annotations?.readOnlyHint === true));
   assert.equal(outbound.mock.callCount(), 0);
 });
 
-test('script, upload and dedicated mutation tools are not callable', async t => {
+test('financial calculations, scripts, uploads and dedicated mutations are not callable', async t => {
   const outbound = noNetwork(t);
-  for (const name of ['execute_script', 'upload_file', 'create_invoice', 'create_daybook_transaction', 'batch_void_daybook_transactions']) {
+  for (const name of ['get_account_balances', 'get_period_financials', 'get_receivables_payables_aging', 'get_bank_reconciliation_status', 'get_vat_overview', 'get_accounting_exceptions', 'execute_script', 'upload_file', 'create_invoice', 'create_daybook_transaction', 'batch_void_daybook_transactions']) {
     const message = await rpc('tools/call', { name, arguments: {} }, { env: { ...baseEnv, BILLY_WRITE_MODE: 'full' } });
     assertToolRejected(message);
   }

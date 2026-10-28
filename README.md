@@ -3,8 +3,10 @@
 ## Cloudflare Workers read-only edition
 
 This fork adds a separate `/mcp` Worker entry point protected by **Cloudflare
-Access Managed OAuth** and a verified-email allowlist. It exposes 25 read-only
-tools, enforces GET-only Billy requests, and excludes `execute_script`.
+Access Managed OAuth** and a verified-email allowlist. It exposes 51 data-reading
+tools, enforces GET-only Billy requests, and excludes `execute_script` and the
+upstream calculated `get_account_balances` tool. Financial calculations,
+comparisons, aging, reconciliation and assessments belong in the chat/client.
 See the [Danish setup guide](docs/cloudflare-workers.md) for the branch,
 deployment steps, required secrets, and ChatGPT connection checks.
 
@@ -14,6 +16,16 @@ describe the current page's coverage; they are not an inventory of every file in
 Billy. `get_file` reads metadata for one known file ID. Neither tool downloads
 document content. The general `list_files` endpoint remains separate and may be
 denied by Billy even when attachment metadata is readable.
+
+The hosted data extension adds native reads for account groups/natures, ledger
+and daybook details, document lines, contact balances, reminders/logs, VAT
+configuration/returns/payments and currencies. The 27 new tools preserve Billy's
+complete JSON response, including original fields, precision and pagination.
+Billy's own balances, statuses and reports remain source data; this Worker does
+not calculate replacements. Each new list call reads one requested page.
+Existing tools with a `verbose` option expose the full response with
+`verbose: true`. Invoice and bill detail responses also preserve separate line
+pagination via `invoiceLinesMeta` and `billLinesMeta`.
 
 The upstream local stdio implementation remains below. Its `execute_script`
 tool is **not a secure sandbox**: review reproduced bypasses of its read-only

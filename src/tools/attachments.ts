@@ -161,6 +161,15 @@ export function registerAttachmentTools(server: McpServer, billy: BillyClient): 
           .describe('all: all attachment records; handled: linked to a document; unhandled: inbox items without an owner'),
         includeFiles: z.boolean().default(true)
           .describe('Include related file metadata and download URLs for the returned attachment page; no document download'),
+        type: z.enum(['Upload', 'EDocument', 'Scout', 'EmailAttachment', 'ApiInvoiceAttachment', 'BillyCustomerInvoice']).optional(),
+        supplier: z.string().trim().min(1).optional().describe('Billy filter on supplier read from the document'),
+        amount: z.number().optional().describe('Billy filter on document amount'),
+        documentDatePeriod: z.string().trim().min(1).optional().describe('Billy document date period'),
+        isDuplicate: z.boolean().optional().describe('Filter using Billy own duplicate-file flag; the MCP does not detect duplicates'),
+        eInvoiceFilter: z.enum(['PENDING', 'APPROVED', 'BLOCKED', 'UNBLOCKED']).optional(),
+        q: z.string().trim().min(2).optional().describe('Billy free-text search, at least two characters'),
+        sortProperty: z.enum(['priority', 'amount', 'documentDate', 'createdTime', 'supplier']).optional(),
+        sortDirection: z.enum(['ASC', 'DESC']).optional(),
         ...pagingShape,
         ...verbosityShape
       }).refine(input => !(input.ownerReference && input.status === 'unhandled'), {
@@ -168,11 +177,11 @@ export function registerAttachmentTools(server: McpServer, billy: BillyClient): 
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ ownerReference, status, includeFiles, page, pageSize, verbose }) => {
+    async ({ ownerReference, status, includeFiles, page, pageSize, verbose, ...filters }) => {
       try {
         const organizationId = await billy.getOrganizationId();
         const data = await billy.get<unknown>('/attachments', {
-          organizationId, ownerReference,
+          organizationId, ownerReference, ...filters,
           handled: status === 'handled' ? true : undefined,
           unhandled: status === 'unhandled' ? true : undefined,
           include: includeFiles ? 'attachment.file:sideload' : undefined,
