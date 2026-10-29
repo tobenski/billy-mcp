@@ -19,6 +19,9 @@ export function registerBillTools(server: McpServer, billy: BillyClient): void {
         contactId: z.string().optional().describe('Filter by supplier contact ID'),
         state: z.enum(['draft', 'approved', 'voided']).optional().describe('Filter by bill state'),
         isPaid: z.boolean().optional().describe('Filter by paid status'),
+        creditedBillId: z.string().trim().min(1).optional().describe('Credit notes for this bill ID'),
+        currencyId: z.string().trim().min(1).optional().describe('Filter by bill currency ID'),
+        hasAttachments: z.boolean().optional().describe('Billy filter for bills with or without attachment links'),
         suppliersInvoiceNo: z.string().optional().describe("Filter by the supplier's invoice number"),
         minEntryDate: z.string().optional().describe('Bill date >= this (YYYY-MM-DD)'),
         maxEntryDate: z.string().optional().describe('Bill date <= this (YYYY-MM-DD)'),
@@ -53,19 +56,25 @@ export function registerBillTools(server: McpServer, billy: BillyClient): void {
   server.registerTool(
     'get_bill',
     {
-      description: 'Get a single Billy bill by ID, including its lines, balance and paid status.',
+      description: 'Read one Billy bill and one page of its native lines. Preserves all fields and separate line pagination; use list_bill_lines for further pages. Balances are Billy source values, not calculated here.',
       inputSchema: z.object({
-        id: z.string().describe('Bill ID')
+        id: z.string().trim().min(1).refine(id => id !== '.' && id !== '..' && !/[\\/?#\s]/.test(id), 'Provide one bill ID').describe('Bill ID'),
+        linePage: z.number().int().min(1).optional(),
+        linePageSize: z.number().int().min(1).max(1000).optional()
       }),
       annotations: { readOnlyHint: true }
     },
-    async ({ id }) => {
+    async ({ id, linePage, linePageSize }) => {
       try {
         const [bill, lines] = await Promise.all([
-          billy.get(`/bills/${id}`),
-          billy.get('/billLines', { billId: id })
+          billy.get(`/bills/${encodeURIComponent(id)}`),
+          billy.get('/billLines', { billId: id, page: linePage ?? 1, pageSize: linePageSize ?? DEFAULT_PAGE_SIZE })
         ]);
-        return jsonResult({ bill: bill.bill, billLines: lines.billLines });
+        if (bill?.bill?.id !== id || !Array.isArray(lines?.billLines) ||
+            lines.billLines.some((line: any) => !line || line.billId !== id)) {
+          throw new Error('Billy returned an invalid bill or lines outside the requested bill.');
+        }
+        return jsonResult({ ...bill, billLines: lines.billLines, billLinesMeta: lines.meta ?? null });
       } catch (e) {
         return errorResult(e);
       }

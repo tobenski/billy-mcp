@@ -1,5 +1,41 @@
 # billy-mcp — Billy (billy.dk) MCP Server for Claude & AI Assistants
 
+## Cloudflare Workers read-only edition
+
+This fork adds a separate `/mcp` Worker entry point protected by **Cloudflare
+Access Managed OAuth** and a verified-email allowlist. It exposes 51 data-reading
+tools, enforces GET-only Billy requests, and excludes `execute_script` and the
+upstream calculated `get_account_balances` tool. Financial calculations,
+comparisons, aging, reconciliation and assessments belong in the chat/client.
+See the [Danish setup guide](docs/cloudflare-workers.md) for the branch,
+deployment steps, required secrets, and ChatGPT connection checks.
+
+`list_attachments` includes file metadata by default and supports server-side
+document and inbox filters. Results retain attachment pagination and explicitly
+describe the current page's coverage; they are not an inventory of every file in
+Billy. `get_file` reads metadata for one known file ID. Neither tool downloads
+document content. The general `list_files` endpoint remains separate and may be
+denied by Billy even when attachment metadata is readable.
+
+The hosted data extension adds native reads for account groups/natures, ledger
+and daybook details, document lines, contact balances, reminders/logs, VAT
+configuration/returns/payments and currencies. The 27 new tools preserve Billy's
+complete JSON response, including original fields, precision and pagination.
+Billy's own balances, statuses and reports remain source data; this Worker does
+not calculate replacements. Each new list call reads one requested page.
+Existing tools with a `verbose` option expose the full response with
+`verbose: true`. Invoice and bill detail responses also preserve separate line
+pagination via `invoiceLinesMeta` and `billLinesMeta`.
+
+The upstream local stdio implementation remains below. Its `execute_script`
+tool is **not a secure sandbox**: review reproduced bypasses of its read-only
+and dry-run controls, and work continuing after its timeout. Do not rely on
+those controls when using the local script tool. This tool is not imported by
+the hosted Worker. Live Billy and ChatGPT OAuth verification is still required
+before using a deployment with real accounting data.
+
+---
+
 **Connect Claude, Cursor, VS Code, and any MCP-compatible AI assistant to [Billy](https://www.billy.dk/) — the Danish accounting platform (billysbilling).** Create invoices, book journal entries, check account balances, reconcile bank lines, and attach receipts — with built-in human-approval write protection so your AI never books anything without your sign-off.
 
 [![npm version](https://img.shields.io/npm/v/billy-mcp)](https://www.npmjs.com/package/billy-mcp)

@@ -71,6 +71,8 @@ export function registerAccountTools(server: McpServer, billy: BillyClient): voi
         'List daybook transactions (manual journal entries) in Billy, filterable by state and entry date range.',
       inputSchema: z.object({
         state: z.enum(['draft', 'approved', 'voided']).optional().describe('Filter by transaction state'),
+        daybookId: z.string().trim().min(1).optional().describe('Filter by daybook ID'),
+        apiType: z.string().trim().min(1).optional().describe('Filter by Billy apiType source marker'),
         minEntryDate: z.string().optional().describe('Entry date >= this (YYYY-MM-DD)'),
         maxEntryDate: z.string().optional().describe('Entry date <= this (YYYY-MM-DD)'),
         q: z

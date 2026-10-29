@@ -1,0 +1,7 @@
+# Local synthetic examples only. Do not put real credentials in this file.
+# Copy to .dev.vars (gitignored) for local development.
+BILLY_ACCESS_TOKEN=synthetic-local-test-token
+ALLOWED_EMAILS=developer@example.invalid
+# Optional; otherwise Billy's single organization is resolved through the API.
+# BILLY_ORGANIZATION_ID=synthetic-organization-id
+# BILLY_LOCALE=da_DK
