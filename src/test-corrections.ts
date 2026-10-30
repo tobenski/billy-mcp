@@ -1,3 +1,4 @@
+import {standardVatRates} from './test-vat.js';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
 import {draftSnapshot} from './test-extended-drafts.js';
@@ -9,18 +10,19 @@ const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const stable=(v:any):string=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
 export const correctionDescriptions:Record<string,string>={
  propose_test_booked_change:'Create a correction DRAFT containing reversal of all original posted DKK lines plus the supplied full replacement. Original is never changed or voided. Test entries only; bank-matched entries allow non-bank reclassification only with identical bank account, amount and side in the full replacement; no new bank lines are created. VAT and currency conversions refused. transactionId is a native transaction ID; expectedRevision comes from get_transaction. Copies source attachment links. Requires separate book_test_daybook_draft after review.',
- propose_test_reversal:'Create a reversal-only DRAFT for a native test transaction, preserving the original. DKK without VAT only; bank-matched entries refused. Uses expectedRevision from get_transaction. No immediate ledger effect, no native void and no deletion; book separately after review.',
+ propose_test_reversal:'Create a reversal-only DRAFT for a native test transaction, preserving the original. DKK with no VAT or standard Danish 25% VAT; VAT reversals retain original gross lines and tax codes. Bank-matched entries refused. Uses expectedRevision from get_transaction. No immediate ledger effect, no native void and no deletion; book separately after review.',
 };
 export async function correctionSource(read:BillyClient,orgId:string,transactionId:string){
  id.parse(transactionId);const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
  const {transaction}=await read.get('/transactions/'+transactionId);
  if(transaction?.id!==transactionId||transaction.organizationId!==orgId||transaction.isVoided||transaction.isVoid||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Only active native daybook transactions may be corrected');
- const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],orgId);validate(source,'approved');
+ const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],orgId);validate(source,'approved',true);const taxRates=await standardVatRates(read,orgId,source.daybookTransactionLines);
  if(source.daybookTransaction.apiType.startsWith('mcp-test:correction:'))throw new NoWriteError('Corrections of correction drafts are not supported in phase 1');
- const ledger=await posted(read,orgId,source);
+ const ledger=await posted(read,orgId,source,undefined,taxRates);
  if(ledger.transaction.id!==transactionId||ledger.postings.some((p:any)=>typeof p.isBankMatched!=='boolean'))throw new NoWriteError('Unknown bank status');
  let preservedBank:any=null;
  const matched=ledger.postings.filter((p:any)=>p.isBankMatched);
+ if(matched.length&&taxRates.length)throw new NoWriteError('VAT bank-matched corrections are not supported');
  if(matched.length){
   if(matched.length!==1)throw new NoWriteError('Exactly one matched bank posting supported');
   const posting=matched[0];
@@ -47,13 +49,13 @@ export async function correctionSource(read:BillyClient,orgId:string,transaction
  }
  const evidence=preservedBank?{source,ledger,preservedBank}:{source,ledger};
  const revision=await sha256(new TextEncoder().encode(stable(evidence)));
- return{...ledger,source,revision,preservedBank};
+ return{...ledger,source,revision,preservedBank,hasVat:taxRates.length>0};
 }
 export async function transactionWithRevision(read:BillyClient,orgId:string,transactionId:string){
  // Ordinary records remain readable even when not eligible for correction.
  id.parse(transactionId);const {transaction}=await read.get('/transactions/'+transactionId);if(transaction?.organizationId!==orgId||transaction.id!==transactionId)throw new Error('Unexpected transaction');
- try {const source=await correctionSource(read,orgId,transactionId);return {...source,correctionEligible:true,correctionMode:source.preservedBank?'non_bank_reclassification':'reversal_and_replacement',reversalEligible:!source.preservedBank};}
- catch{return {transaction,correctionEligible:false,revision:null,limitation:'Only active test-created DKK entries without VAT and with supported bank evidence are eligible. A lookup failure can also prevent eligibility verification.'};}
+ try {const source=await correctionSource(read,orgId,transactionId);return {...source,correctionEligible:!source.hasVat,correctionMode:source.hasVat?'reversal_only':source.preservedBank?'non_bank_reclassification':'reversal_and_replacement',reversalEligible:!source.preservedBank};}
+ catch{return {transaction,correctionEligible:false,revision:null,limitation:'Only active test-created DKK entries with supported VAT and bank evidence are eligible; VAT permits reversal only. A lookup failure can also prevent eligibility verification.'};}
 }
 export async function verifyCorrection(read:BillyClient,db:JournalDB,orgId:string,draft:any){
  const row=await db.prepare("SELECT result FROM operations WHERE state = 'complete' AND id LIKE ? AND json_extract(result, '$.correctionDraft.daybookTransaction.id') = ?").bind(orgId+':%',draft.daybookTransaction.id).first<{result:string}>();
@@ -78,11 +80,12 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  const marker='mcp-test:correction:'+a.transactionId;
  try{
  original=await correctionSource(read,orgId,a.transactionId);
+ if(original.hasVat&&!reversalOnly)throw new NoWriteError('VAT sources support reversal only; replacement corrections are not implemented');
  if(original.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_transaction again');
  if(a.entryDate<original.transaction.entryDate)throw new NoWriteError('Correction date cannot precede original posting date');
  const existing=await read.fetchAll('/daybookTransactions','daybookTransactions',{organizationId:orgId,apiType:marker});
  if(existing.some((h:any)=>h.apiType===marker&&h.state!=='voided'))throw new NoWriteError('An active correction proposal or booked correction already exists for this source');
- let sourceLines=original.postings,replacementLines=replacement;
+ let sourceLines=original.hasVat?original.source.daybookTransactionLines:original.postings,replacementLines=replacement;
  if(original.preservedBank){
   if(reversalOnly)throw new NoWriteError('BANK_MATCH_PRESERVED: reversal requires separately resolving bank reconciliation');
   const bp=original.preservedBank.posting;
@@ -96,16 +99,16 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
   sourceLines=original.postings.filter((p:any)=>p.id!==bp.id);
   replacementLines=replacement.filter((l:any)=>l.accountId!==bp.accountId);
  }
- const reversal=sourceLines.map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK'}));
- lines=[...reversal,...replacementLines];validate({daybookTransaction:{state:'draft',apiType:marker},daybookTransactionLines:lines},'draft');
+ const reversal=sourceLines.map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK',...(p.taxRateId?{taxRateId:p.taxRateId}:{})}));
+ lines=[...reversal,...replacementLines];validate({daybookTransaction:{state:'draft',apiType:marker},daybookTransactionLines:lines},'draft',original.hasVat);
  for(const accountId of new Set(lines.map(l=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');}
  if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new NoWriteError('Source changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Correction preflight failed. No write performed.');}
  const response=await write.post('/daybookTransactions',{daybookTransaction:{organizationId:orgId,daybookId:original.source.daybookTransaction.daybookId,entryDate:a.entryDate,description:a.description,extendedDescription:'Korrektionskladde for transaction '+a.transactionId+'. '+a.reasoning,apiType:marker,state:'draft',lines:lines!}});
  const draftId=id.parse(response.daybookTransactions?.[0]?.id);
  for(const fileId of new Set(original.source.attachments.map((x:any)=>x.fileId))){id.parse(fileId);await write.post('/attachments',{attachment:{organizationId:orgId,ownerReference:'daybookTransaction:'+draftId,fileId}});}
- const after=await draftSnapshot(read,draftId,orgId);validate(after,'draft');
- const canon=(ls:any[])=>ls.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:l.currencyId})).sort();
+ const after=await draftSnapshot(read,draftId,orgId);validate(after,'draft',original.hasVat);
+ const canon=(ls:any[])=>ls.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:l.currencyId,taxRateId:l.taxRateId??null})).sort();
  if(stable(canon(after.daybookTransactionLines))!==stable(canon(lines!))||after.daybookTransaction.entryDate!==a.entryDate||after.daybookTransaction.description!==a.description)throw new Error('Correction readback mismatch');
  const files=(xs:any[])=>[...new Set(xs.map(x=>x.fileId))].sort();if(stable(files(after.attachments))!==stable(files(original.source.attachments)))throw new Error('Copied file links differ');
  if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new Error('Original changed during proposal creation');
