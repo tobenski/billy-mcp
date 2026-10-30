@@ -15,12 +15,14 @@ export const additionalZeroVat=new Map<string,{group:string;purchase:boolean;met
 export const representationTag='p_dk_representation_full';
 export const importGoodsTag='p_dk_non_eu_goods_full';
 export async function standardVatRates(read:BillyClient,orgId:string,lines:any[]){
+ const hasFx=lines.some(l=>l.currencyId==='EUR');
  const taxIds=new Set<string>(lines.map(l=>l.taxRateId).filter(Boolean));
  const taxRates:any[]=[];if(!taxIds.size)return taxRates;
  const rates=await read.fetchAll('/taxRates','taxRates',{organizationId:orgId});
  let metaFields:any[]|undefined;const accounts=new Map<string,any>();
  for(const taxId of taxIds){
  const rate=rates.find((r:any)=>r.id===taxId);
+ if(hasFx&&(!rate||!['p_dk_25','s_dk_25'].includes(rate.predefinedTag)))throw new NoWriteError('EUR VAT supports only ordinary Danish purchase/sales 25 percent codes');
  const additional=additionalZeroVat.get(rate?.predefinedTag);
  const representation=rate?.predefinedTag===representationTag;
  const euSale=euSalesTags.has(rate?.predefinedTag),eu=euSale||euPurchaseTags.has(rate?.predefinedTag),reverse=reverseChargeTags.has(rate?.predefinedTag),importGoods=rate?.predefinedTag===importGoodsTag;
@@ -47,6 +49,7 @@ export async function standardVatRates(read:BillyClient,orgId:string,lines:any[]
  if(!accounts.has(component.accountId))accounts.set(component.accountId,(await read.get('/accounts/'+component.accountId)).account);
  const account=accounts.get(component.accountId);
  if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid VAT account');
+ if(hasFx&&(account.systemRole!==(purchase?'purchaseTax':'salesTax')||account.isBankAccount!==false))throw new NoWriteError('Unexpected EUR VAT account role');
  if(representation&&(account.systemRole!=='purchaseTax'||account.isBankAccount!==false))throw new NoWriteError('Representation VAT requires a purchaseTax account');
  if(reverse){const role=component.share>0?'purchaseTax':rate.predefinedTag==='p_dk_eu_goods_full'?'euTaxGoods':rate.predefinedTag==='p_dk_reverse_full'?'salesTax':'euTaxServices';if(account.systemRole!==role||account.isBankAccount!==false)throw new NoWriteError('Unexpected reverse-charge VAT account role');}
  }
