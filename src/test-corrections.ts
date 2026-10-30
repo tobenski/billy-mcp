@@ -10,15 +10,15 @@ const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const stable=(v:any):string=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
 export const correctionDescriptions:Record<string,string>={
  propose_test_booked_change:'Create a correction DRAFT containing reversal of all original posted DKK lines plus the supplied full replacement. Original is never changed or voided. Test entries only; bank-matched entries allow non-bank reclassification only with identical bank account, amount and side in the full replacement; no new bank lines are created. VAT and currency conversions refused. transactionId is a native transaction ID; expectedRevision comes from get_transaction. Copies source attachment links. Requires separate book_test_daybook_draft after review.',
- propose_test_reversal:'Create a reversal-only DRAFT for a native test transaction, preserving the original. DKK with no VAT or supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes or EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping; VAT reversals retain original gross lines and tax codes. Bank-matched entries refused. Uses expectedRevision from get_transaction. No immediate ledger effect, no native void and no deletion; book separately after review.',
+ propose_test_reversal:'Create a reversal-only DRAFT for a native test transaction, preserving the original. DKK with no VAT or supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes or EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping; VAT reversals retain original gross lines and tax codes. Bank-matched entries refused. Uses expectedRevision from get_transaction. No immediate ledger effect, no native void and no deletion; book separately after review. After inspecting a pending reversal operation, the exact same request can verify and recover one already-created complete reversal draft without any native writes. Missing/changed evidence stays pending.',
 };
-export async function correctionSource(read:BillyClient,orgId:string,transactionId:string){
+export async function correctionSource(read:BillyClient,orgId:string,transactionId:string,verifiedRates?:any[]){
  id.parse(transactionId);const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
  const {transaction}=await read.get('/transactions/'+transactionId);
  if(transaction?.id!==transactionId||transaction.organizationId!==orgId||transaction.isVoided||transaction.isVoid||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Only active native daybook transactions may be corrected');
- const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],orgId);validate(source,'approved',true);const taxRates=await standardVatRates(read,orgId,source.daybookTransactionLines);
+ const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],orgId);validate(source,'approved',true);const taxRates=verifiedRates??await standardVatRates(read,orgId,source.daybookTransactionLines);
  if(source.daybookTransaction.apiType.startsWith('mcp-test:correction:'))throw new NoWriteError('Corrections of correction drafts are not supported in phase 1');
- const ledger=await posted(read,orgId,source,undefined,taxRates);
+ const ledger=await posted(read,orgId,source,transaction,taxRates);
  if(ledger.transaction.id!==transactionId||ledger.postings.some((p:any)=>typeof p.isBankMatched!=='boolean'))throw new NoWriteError('Unknown bank status');
  let preservedBank:any=null;
  const matched=ledger.postings.filter((p:any)=>p.isBankMatched);
@@ -49,7 +49,7 @@ export async function correctionSource(read:BillyClient,orgId:string,transaction
  }
  const evidence=preservedBank?{source,ledger,preservedBank}:{source,ledger};
  const revision=await sha256(new TextEncoder().encode(stable(evidence)));
- return{...ledger,source,revision,preservedBank,hasVat:taxRates.length>0};
+ return{...ledger,source,revision,preservedBank,hasVat:taxRates.length>0,taxRates};
 }
 export async function transactionWithRevision(read:BillyClient,orgId:string,transactionId:string){
  // Ordinary records remain readable even when not eligible for correction.
@@ -57,11 +57,11 @@ export async function transactionWithRevision(read:BillyClient,orgId:string,tran
  try {const source=await correctionSource(read,orgId,transactionId);return {...source,correctionEligible:!source.hasVat,correctionMode:source.hasVat?'reversal_only':source.preservedBank?'non_bank_reclassification':'reversal_and_replacement',reversalEligible:!source.preservedBank};}
  catch{return {transaction,correctionEligible:false,revision:null,limitation:'Only active test-created DKK entries with supported VAT and bank evidence are eligible; VAT permits reversal only. A lookup failure can also prevent eligibility verification.'};}
 }
-export async function verifyCorrection(read:BillyClient,db:JournalDB,orgId:string,draft:any){
+export async function verifyCorrection(read:BillyClient,db:JournalDB,orgId:string,draft:any,verifiedRates?:any[]){
  const row=await db.prepare("SELECT result FROM operations WHERE state = 'complete' AND id LIKE ? AND json_extract(result, '$.correctionDraft.daybookTransaction.id') = ?").bind(orgId+':%',draft.daybookTransaction.id).first<{result:string}>();
  if(!row)throw new NoWriteError('Correction provenance is missing');const saved=JSON.parse(row.result);
  if(draft.revision!==saved.correctionDraft.revision)throw new NoWriteError('Correction draft changed; delete and prepare a new proposal');
- const current=await correctionSource(read,orgId,saved.sourceTransactionId);
+ const current=await correctionSource(read,orgId,saved.sourceTransactionId,verifiedRates);
  if(current.revision!==saved.sourceRevision)throw new NoWriteError('Correction source changed; prepare a fresh proposal');
  if(saved.bankMatchPreserved){
   for(const accountId of new Set(draft.daybookTransactionLines.map((l:any)=>l.accountId))){
@@ -75,6 +75,7 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  const reversalOnly=name==='propose_test_reversal';
  const replacement=reversalOnly?[]:a.lines.map((l:any)=>{id.parse(l.accountId);if(l.text.length>100||l.currencyId&&l.currencyId!=='DKK'||l.taxRateId!=null||l.baseAmount!==undefined&&l.baseAmount!==l.amount)throw new NoWriteError('Only DKK without tax/conversion supported');return{accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:'DKK'};});
  if(!reversalOnly)validate({daybookTransaction:{state:'draft',apiType:'mcp-test:validation'},daybookTransactionLines:replacement},'draft');
+ if(reversalOnly){const {recoverPendingReversal}=await import('./test-reversal-recovery.js');const recovered=await recoverPendingReversal(read,db,orgId,a);if(recovered)return jsonResult(recovered);}
  return jsonResult(await journalRun(db,orgId,a.operationId,'correction:'+a.transactionId,{action:name,...a},async()=>{
  let original:any,lines:any[];
  const marker='mcp-test:correction:'+a.transactionId;
@@ -102,7 +103,7 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  const reversal=sourceLines.map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK',...(p.taxRateId?{taxRateId:p.taxRateId}:{})}));
  lines=[...reversal,...replacementLines];validate({daybookTransaction:{state:'draft',apiType:marker},daybookTransactionLines:lines},'draft',original.hasVat);
  for(const accountId of new Set(lines.map(l=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');}
- if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new NoWriteError('Source changed during preflight');
+ if((await correctionSource(read,orgId,a.transactionId,original.taxRates)).revision!==original.revision)throw new NoWriteError('Source changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Correction preflight failed. No write performed.');}
  const response=await write.post('/daybookTransactions',{daybookTransaction:{organizationId:orgId,daybookId:original.source.daybookTransaction.daybookId,entryDate:a.entryDate,description:a.description,extendedDescription:'Korrektionskladde for transaction '+a.transactionId+'. '+a.reasoning,apiType:marker,state:'draft',lines:lines!}});
  const draftId=id.parse(response.daybookTransactions?.[0]?.id);
@@ -111,7 +112,13 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  const canon=(ls:any[])=>ls.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:l.currencyId,taxRateId:l.taxRateId??null})).sort();
  if(stable(canon(after.daybookTransactionLines))!==stable(canon(lines!))||after.daybookTransaction.entryDate!==a.entryDate||after.daybookTransaction.description!==a.description)throw new Error('Correction readback mismatch');
  const files=(xs:any[])=>[...new Set(xs.map(x=>x.fileId))].sort();if(stable(files(after.attachments))!==stable(files(original.source.attachments)))throw new Error('Copied file links differ');
- if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new Error('Original changed during proposal creation');
+ if((await correctionSource(read,orgId,a.transactionId,original.taxRates)).revision!==original.revision)throw new Error('Original changed during proposal creation');
  return{kind:original.preservedBank?'non_bank_reclassification':reversalOnly?'reversal_only':'reversal_and_replacement',bankMatchPreserved:!!original.preservedBank,sourceTransactionId:a.transactionId,sourceRevision:original.revision,originalUnchanged:true,correctionDraft:after,reasoning:a.reasoning,ledgerEffect:'none_until_separately_booked',nativeVoid:false};
  }));
  }catch(e){return errorResult(e);}};}
+
+export function validateReversalRecoveryLines(original:any,draft:any){
+ const expected=(original.hasVat?original.source.daybookTransactionLines:original.postings).map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK',taxRateId:p.taxRateId??null}));
+ const canon=(ls:any[])=>ls.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:l.currencyId,taxRateId:l.taxRateId??null})).sort();
+ if(stable(canon(draft.daybookTransactionLines))!==stable(canon(expected)))throw Error('Pending reversal lines mismatch');
+}
