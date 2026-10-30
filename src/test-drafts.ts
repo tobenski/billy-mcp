@@ -63,6 +63,12 @@ export async function journalRun(db: JournalDB, org: string, key: string, target
       await db.prepare("DELETE FROM operations WHERE id = ? AND state = 'pending'").bind(journalId).run();
       throw error;
     }
+    // Persist only classified metadata, never upstream bodies, credentials or free text.
+    const message=error instanceof Error?error.message:'';
+    const native=/^Billy API (GET|POST|PUT|DELETE) \/([A-Za-z]+)(?:\/[^ ]+)? failed with ([1-5][0-9]{2}):/.exec(message);
+    const network=/^Billy API (GET|POST|PUT|DELETE) \/([A-Za-z]+)(?:\/[^ ]+)? network error:/.exec(message);
+    const diagnostic={kind:native?'billy_http':network?'billy_network':'verification_or_internal',...(native?{method:native[1],resource:native[2],httpStatus:Number(native[3])}:network?{method:network[1],resource:network[2]}:{}),recordedAt:new Date().toISOString(),outcome:'undetermined',safeToRetry:false};
+    try{await db.prepare("UPDATE operations SET result = ? WHERE id = ? AND state = 'pending' AND result IS NULL").bind(JSON.stringify({diagnostic}),journalId).run();}catch{/* Diagnostic failure must never release the pending lock. */}
     // Keep pending lock even after network errors: a write may already have succeeded.
     throw new Error('Operation outcome requires inspection. No automatic retry. Read get_test_write_operation and the draft in Billy before further writes.');
   }
@@ -98,7 +104,8 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
     let currentEvidence:any;
     try{const {inspectBankOperation}=await import('./test-operation-inspection.js');currentEvidence=await inspectBankOperation(read,orgId,input);}
     catch{currentEvidence={available:false,outcome:'undetermined',safeToRetry:false,reason:'Current evidence could not be verified. Saved journal state and pending lock are unchanged.'};}
-    return {operationId,state:row.state,input,result:row.result?JSON.parse(row.result):null,resultIsHistorical:true,currentEvidence};
+    const saved=row.result?JSON.parse(row.result):null;
+    return {operationId,state:saved?.disposition==='abandoned'?'abandoned':row.state,storageState:row.state,retryBlocked:row.state==='pending',input,result:saved,resultIsHistorical:true,currentEvidence};
   }));
   server.registerTool('create_test_daybook_draft', {
     description: 'Create a balanced draft in the locked test organization, then read its header and all lines. Base currency only, no tax or contra-account shortcuts. Requires a unique operation UUID; reuse exactly the same UUID/input after a lost response. Never books the draft.',
