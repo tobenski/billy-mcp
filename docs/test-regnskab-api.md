@@ -90,5 +90,10 @@ Kladder kan stadig slettes med kladdeværktøjet. Kontrollér bilagsrelationerne
 Live-kladdetest 2026-10-30: tre linjer 60+40 debet/100 kredit, genlæsning, gentagelse
 uden dublet, tekstrettelse, afvisning af ubalance og ændret input med samme UUID,
 samt sletning bestod. Efter testen var der ingen kladder eller bogførte transaktioner.
-Bilagsværktøjerne har lokale tests, men afventer live-test efter MCP-opdatering.
-
+Bilagsværktøjerne er live-testet 2026-10-30: PDF-upload, genforsøg uden ny fil,
+tilknytning, gentaget tilknytning uden dublet og download med identiske bytes og
+SHA-256 bestod. Billy returnerede en signeret URL fra sin EU S3-bucket; den
+konkrete vært er nu tilladt og dækket af regressionstest. 106 lokale tests består.
+Efter sletning af testkladden var der 0 kladder og 0 bogførte transaktioner.
+Billy bevarede testbilaget som unhandled med ownerReference=null; filen kunne
+fortsat downloades og verificeres. Oprydning af kladden sletter altså ikke filen.
