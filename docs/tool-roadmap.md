@@ -1543,4 +1543,4 @@ Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen fo
 }
 ```
 
-Momsudvidelse: book_test_daybook_draft understøtter standard dansk 25 % moms; propose_test_reversal bevarer bruttolinjer og momskoder. Bankafstemning og erstatningsrettelser med moms er fortsat blokeret. Se [momsbogføring og live-test](vat-booking.md).
+Momsudvidelse: book_test_daybook_draft understøtter standard dansk 25 % moms; propose_test_reversal bevarer bruttolinjer og momskoder. Bankafstemning af én bogført momspost understøttes nu; grupper af momsposter og erstatningsrettelser med moms er fortsat blokeret. Se [momsafstemning](vat-bank-matching.md). Se [momsbogføring og live-test](vat-booking.md).
