@@ -66,6 +66,8 @@ test('foreign organization overrides and external paths cannot reach data endpoi
     ['billy_raw_request', { path: '/accounts', query: { organizationId: 'other-company' } }],
     ['billy_raw_request', { path: '/accounts?organizationId=other-company' }],
     ['billy_raw_request', { path: '/organizations/other-company' }],
+    ['billy_raw_request', { path: '/organizations/other-company/reports/trialBalance' }],
+    ['billy_raw_request', { path: '/organizations/'+TEST_ORGANIZATION_ID+'/reports/unknown' }],
     ['billy_raw_request', { path: '/../user' }],
   ] as const) {
     const result = await rpc('tools/call', { name, arguments: args });
@@ -180,4 +182,11 @@ test('caller cannot supply an alternative organization ID', async t => {
   const result = await rpc('tools/call', { name: 'get_test_organization', arguments: { id: 'different-organization' } });
   assert.ok(result.error || result.result?.isError);
   assert.equal(calls.mock.callCount(), 0);
+});
+
+
+test('known native report paths are allowed only beneath the verified organization',async t=>{
+ const paths:string[]=[];t.mock.method(globalThis,'fetch',async input=>{const path=new URL(String(input)).pathname;paths.push(path);return Response.json(path==='/v2/organization'?{organization:{id:TEST_ORGANIZATION_ID}}:{report:{native:true}});});
+ for(const kind of ['reports/trialBalance','reports/balanceSheet','reports/profitAndLoss','trialBalance.json','balanceSheet.json','incomeStatement.json']){const path='/organizations/'+TEST_ORGANIZATION_ID+'/'+kind;const r=await rpc('tools/call',{name:'billy_raw_request',arguments:{path}});assert.notEqual(r.result?.isError,true);assert.equal(JSON.parse(r.result.content[0].text).report.native,true);}
+ assert.equal(paths.filter(p=>p.includes('/reports/')).length,3);
 });
