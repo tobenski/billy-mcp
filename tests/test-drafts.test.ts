@@ -61,7 +61,7 @@ function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;for
 test('write-enabled registry adds narrow draft and attachment tools',async t=>{
   const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('No network')});
   const result=await rpc(journal(),'',{},'tools/list');
-  assert.equal(result.result.tools.length,83);
+  assert.equal(result.result.tools.length,84);
   assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false&&!roadmapTools.some(t=>t.name===x.name)).map((x:any)=>x.name).sort(),['attach_test_file_to_draft','create_test_daybook_draft','delete_test_daybook_draft','remove_test_draft_attachment','reuse_test_inbox_attachment','update_test_daybook_draft','upload_test_file']);
   assert.equal(calls.mock.callCount(),0);
 });
