@@ -1,6 +1,6 @@
 # Reserverede Billy-værktøjer, kontrakt v1
 
-20 stubs og ét implementeret statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
+18 stubs, to implementerede fase 1-kladdeværktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
 
 Alle stubs returnerer isError=true og NOT_IMPLEMENTED uden API-kald, journalreservation eller regnskabsændring. Skriveværktøjer er markeret som skrivende efter deres tilsigtede funktion, selv om stubs ikke skriver. Ingen status skifter automatisk til aktiv.
 
@@ -44,7 +44,10 @@ Implementér ét værktøj ad gangen og bevar navn/input når muligt. Opdatér s
 
 Eksisterende kladdesletning er begrænset til testværktøjernes egne kladder. Moms- og søgefunktioner følger Billys eksisterende semantik. Udvidede kladder er reserveret særskilt, så nuværende kladdekontrakter bevares.
 
-## Reserverede kontrakter
+## Kontrakter
+
+create_test_extended_draft og update_test_extended_draft er nu implementeret for DKK uden moms eller valgfrie tilknytninger. get_daybook_transaction returnerer revision i testskrivemodus. Se [fase 1 og live-test](extended-drafts.md). Inputskemaerne nedenfor er bevaret; ikke-understøttede felter afvises.
+
 
 ### get_test_account_balances
 
