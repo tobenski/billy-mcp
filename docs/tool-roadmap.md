@@ -1,6 +1,6 @@
 # Reserverede Billy-værktøjer, kontrakt v1
 
-5 stubs, 16 implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 83 værktøjer. Produktionsserveren er uændret.
+4 stubs, 18 implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 84 værktøjer. Produktionsserveren er uændret.
 
 Alle stubs returnerer isError=true og NOT_IMPLEMENTED uden API-kald, journalreservation eller regnskabsændring. Skriveværktøjer er markeret som skrivende efter deres tilsigtede funktion, selv om stubs ikke skriver. Ingen status skifter automatisk til aktiv.
 
