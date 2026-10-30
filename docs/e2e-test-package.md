@@ -1,5 +1,9 @@
 # Comprehensive synthetic E2E package v1
 
+Historical pre-bank-import checkpoint. The bank phase subsequently completed and
+A/B were later corrected and re-reconciled. Tables below are not current balances.
+See [current capability audit](capability-audit-2026-10-30.md) and bank-links.md.
+
 Batch: `E2E-20261030-01`. DKK without VAT, test organization only.
 Never rerun writes with new operation IDs for the same batch. Generation is local
 and does not write to Billy. The fixed batch/date/UUIDs describe one run, not a
