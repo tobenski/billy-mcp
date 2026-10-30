@@ -7,12 +7,17 @@ Denne branch deployer som standard **kun** `billy-mcp-test`. Brug ikke dens
 deploykommando på den aktive læseforbindelse. API-klient, MCP-transport og
 Cloudflare Access-identitetskontrol genbruges fra læseforbindelsen.
 
-Forbindelsen eksponerer `get_test_organization` (Vis testregnskab),
-`list_accounts` (kontoplan) og `list_daybooks` (kassekladder).
-De to listefunktioner genbruges fra læseforbindelsen med dens filtre og paginering.
+Forbindelsen eksponerer alle 51 læseværktøjer fra læseforbindelsen samt
+`get_test_organization` (Vis testregnskab), i alt 52 værktøjer.
+Den bruger samme registerfunktion, schemas, filtre og paginering som læseforbindelsen.
+`billy_raw_request` er fortsat kun GET og går gennem samme identitetskontrol.
+Eksplicitte organisations-ID'er i organisationsopslag og query-parametre
+afvises, hvis de peger på et andet regnskab.
 Før data læses, kaldes `/organization` med testnøglen, og det fastlåste test-ID kræves.
 Kontrollen deles kun inden for den enkelte MCP-anmodning; næste kald verificeres igen.
 Navnet alene er ikke en identitetskontrol.
+Det fastlåste ID ligger i runtime-binding `BILLY_TEST_ORGANIZATION_ID`, ikke i koden.
+Manglende ID afviser adgang; MCP-kald kan ikke ændre det.
 Nøglen ligger i Worker-secret `BILLY_API_KEY`; den findes ikke i repositoryet.
 `ALLOWED_EMAILS` og en separat Cloudflare Access-app med Managed OAuth kræves.
 Uden godkendt Access-identitet afviser Worker alle ruter.
@@ -29,9 +34,10 @@ Automatisk Git-build skal i givet fald kobles til denne branch og denne Worker.
 
 ## Næste trin
 
-Bekræft de to listefunktioner fra ChatGPT og vælg gyldige testkonti og kassekladde. Udvid derefter med
+Opdatér værktøjslisten i ChatGPT og bekræft repræsentative læsekald. Udvid derefter med
 én skrivefunktion ad gangen, først kladdeoprettelse. Ingen skriveværktøjer,
-generisk raw API eller scripts eksponeres i dette trin. Alle kommende operationer
+raw API-skrivning eller scripts eksponeres i dette trin. Alle kommende operationer
 skal kontrollere tokenets regnskabs-ID før adgang; både positive og negative
-tests skal dække denne kontrol. Eksisterende læseværktøjer kan indføres gradvist.
+tests skal dække denne kontrol. En test sammenligner samtlige 51 læseværktøjers
+schemas direkte med den oprindelige server og kontrollerer fravær af skriveværktøjer.
 Analyse og konteringsvurderinger forbliver i chatten.
