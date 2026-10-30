@@ -4,6 +4,7 @@ import { BillyClient } from './billy-client.js';
 import { hasAllowedOrigin, isAllowed, type AccessContext } from './worker-auth.js';
 import { registerTestDraftTools, type JournalDB } from './test-drafts.js';
 import { registerTestFileTools } from './test-files.js';
+import { registerRoadmapTools } from './test-roadmap.js';
 import { createReadOnlyServer } from './worker-server.js';
 
 // Deployment-only configuration; never supplied by an MCP caller.
@@ -72,6 +73,7 @@ function createTestServer(billy: BillyClient, expectedId: string, write?: BillyC
     registerTestDraftTools(server, billy, write, db, expectedId);
     registerTestFileTools(server, billy, write, db, expectedId);
   }
+  registerRoadmapTools(server, Boolean(write && db));
   return createReadOnlyServer(billy, server);
 }
 
