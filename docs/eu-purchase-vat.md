@@ -1,5 +1,7 @@
 # EU-køb med fuldt fradrag – første EU-pakke
 
+Næste momsudvidelse er implementeret: ydelser uden for EU, dansk omvendt betalingspligt og vareimport med separat importmoms. Se [kontrakt og live-test](non-eu-and-domestic-vat.md). Tidligere afgrænsninger nedenfor gælder den oprindelige pakke.
+
 Implementeret og live-testet 2026-10-30. 224 automatiske tests består. Eksisterende inputskemaer og værktøjer er bevaret.
 
 ## Kontrakt
