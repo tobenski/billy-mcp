@@ -7,8 +7,11 @@ Denne branch deployer som standard **kun** `billy-mcp-test`. Brug ikke dens
 deploykommando på den aktive læseforbindelse. API-klient, MCP-transport og
 Cloudflare Access-identitetskontrol genbruges fra læseforbindelsen.
 
-Første trin eksponerer kun `get_test_organization` (Vis testregnskab).
-Kaldet læser `/organization` med testnøglen og kræver det fastlåste test-ID.
+Forbindelsen eksponerer `get_test_organization` (Vis testregnskab),
+`list_accounts` (kontoplan) og `list_daybooks` (kassekladder).
+De to listefunktioner genbruges fra læseforbindelsen med dens filtre og paginering.
+Før data læses, kaldes `/organization` med testnøglen, og det fastlåste test-ID kræves.
+Kontrollen deles kun inden for den enkelte MCP-anmodning; næste kald verificeres igen.
 Navnet alene er ikke en identitetskontrol.
 Nøglen ligger i Worker-secret `BILLY_API_KEY`; den findes ikke i repositoryet.
 `ALLOWED_EMAILS` og en separat Cloudflare Access-app med Managed OAuth kræves.
@@ -26,7 +29,7 @@ Automatisk Git-build skal i givet fald kobles til denne branch og denne Worker.
 
 ## Næste trin
 
-Bekræft OAuth-login og `get_test_organization` fra ChatGPT. Udvid derefter med
+Bekræft de to listefunktioner fra ChatGPT og vælg gyldige testkonti og kassekladde. Udvid derefter med
 én skrivefunktion ad gangen, først kladdeoprettelse. Ingen skriveværktøjer,
 generisk raw API eller scripts eksponeres i dette trin. Alle kommende operationer
 skal kontrollere tokenets regnskabs-ID før adgang; både positive og negative
