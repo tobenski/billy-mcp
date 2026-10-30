@@ -22,9 +22,9 @@ export function periods(from:string,to:string,granularity?:string){
 export const reportDescriptions:Record<string,string>={
  get_test_account_balances:'Read native Billy income statement and/or balance sheet reports as unchanged HTML in JSON. Optional calendar month/quarter/year periods, at most 12. Balance sheet includes Billy opening/movement/closing columns. Native report signs and year-result presentation differ from Numina; no MCP aggregation. DKK Billy chart only.',
  get_test_trial_balance:'Read native Billy trial balance HTML for fiscal-year start through asOf. Uses organization fiscal-year metadata, excludes drafts according to native report semantics. Billy signs and current-year result presentation are preserved, not normalized to Numina. DKK Billy chart only.',
- get_test_bank_balances:'Read native bookkeeping balances of active bank accounts, plus recent stored bank-line observations. Ledger balance is not bank-reported or available funds. Bank-reported balance/sync state remain unknown in this phase. At most 12 accounts; use accountId for larger charts. No bank refresh or aggregation.',
+ get_test_bank_balances:'Read native bookkeeping balances of active bank accounts, plus recent stored bank-line observations. Ledger balance is not bank-reported or available funds. Includes separate raw evidence/access status from fixed read-only bank-integration endpoints. Normalized bank-reported balance/sync state remain unknown until connected-bank verification. At most 12 accounts; use accountId for larger charts. No bank refresh or aggregation.',
 };
-export function reportHandler(read:BillyClient,orgId:string,name:string){return async(a:any)=>{try{
+export function reportHandler(read:BillyClient,orgId:string,name:string,integrationRead?:(accountId?:string)=>Promise<any>){return async(a:any)=>{try{
  const {organization:org}=await read.get('/organization');if(org?.id!==orgId)throw Error('Test organization mismatch');
  if(org.baseCurrencyId!=='DKK')throw Error('Report phase supports DKK base currency only');
  if(name==='get_test_bank_balances'){
@@ -38,7 +38,8 @@ export function reportHandler(read:BillyClient,orgId:string,name:string){return 
  for(const status of ['booked','pending']){const page=await read.get('/bankLines',{accountId:account.id,status,sortProperty:'entryDate',sortDirection:'DESC',page:1,pageSize:2});if(!Array.isArray(page.bankLines)||page.bankLines.some((l:any)=>l.accountId!==account.id))throw Error('Unexpected bank-line response');observations.push({status,native:page});}
  rows.push({account,ledger:{asOf,currencyId,native:ledger,source:'/accounts/'+account.id+'/balance'},bankReportedBalance:null,synchronizedAt:null,connectionStatus:'unknown',bankLineObservations:observations});
  }
- return jsonResult({organizationId:orgId,asOf,accounts:rows,coverage:'ledger_balances_and_recent_bank_line_observations_only',bankReportedBalancesAvailable:false,notes:['Null means unknown, not zero.','No live bank refresh; ledger balances are not available funds.','Recent bank lines may be imported, incomplete, tied by date, or lack balances; they are not promoted to authoritative bank balances.','Native values preserved; no currency conversion or aggregation.']});
+ const integrationEvidence=integrationRead?await integrationRead(a.accountId):{available:false,reason:'not_configured'};
+ return jsonResult({organizationId:orgId,asOf,accounts:rows,integrationEvidence,coverage:'ledger_balances_and_recent_bank_line_observations_only',bankReportedBalancesAvailable:false,notes:['Null means unknown, not zero.','No live bank refresh; ledger balances are not available funds.','Recent bank lines may be imported, incomplete, tied by date, or lack balances; they are not promoted to authoritative bank balances.','Native values preserved; no currency conversion or aggregation.']});
  }
  const periodsRequested=name==='get_test_trial_balance'?[{from:fiscalStart(org,date(a.asOf)),to:date(a.asOf)}]:periods(a.from,a.to,a.granularity);
  if(a.statement!==undefined&&!['profit_loss','balance_sheet'].includes(a.statement))throw Error('Invalid statement');
