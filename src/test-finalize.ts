@@ -30,8 +30,8 @@ export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTra
  return{transaction,postings};
 }
 export const finalizeDescriptions:Record<string,string>={
- book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft with no VAT or standard Danish 25% VAT. Verifies native net/tax split in integer cents; VAT bank matching remains unsupported. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
- approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against a booked test entry or an original/correction pair with 2-3 complete bank posting associations and an exact signed net. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
+ book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft with no VAT or standard Danish 25% VAT. Verifies native net/tax split in integer cents; Single-entry standard VAT bank matching is supported. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
+ approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against a booked test entry (including standard Danish 25% VAT) or a VAT-free original/correction pair with 2-3 complete bank posting associations and an exact signed net. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
 };
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
  const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
@@ -62,7 +62,7 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(transaction?.organizationId!==orgId||transaction.isVoided||transaction.isVoid||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Unsupported posting source');draftId=transaction.originatorReference.split(':')[1];
  }
  else throw new NoWriteError('Expected one test daybook subject');
- before=await draftSnapshot(read,draftId,orgId);validate(before,'approved');ledger=await posted(read,orgId,before);
+ before=await draftSnapshot(read,draftId,orgId);validate(before,'approved',true);taxRates=await standardVatRates(read,orgId,before.daybookTransactionLines);ledger=await posted(read,orgId,before,undefined,taxRates);
  const bankPostings=ledger.postings.filter((p:any)=>p.accountId===bank.account.id);
  if(ref.startsWith('posting:')&&ref!=='posting:'+bankPostings[0]?.id)throw new NoWriteError('Wrong bank posting association');
  if(bankPostings.length!==1||money(bankPostings[0].amount)!==money(bank.bankLine.amount)||bankPostings[0].side!==bank.bankLine.side||bankPostings[0].isBankMatched)throw new NoWriteError('Bank amount/side mismatch or posting already matched');
@@ -73,9 +73,9 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Finalization preflight failed. No write performed.');}
  if(booking)await write.put('/daybookTransactions/'+a.daybookTransactionId,{daybookTransaction:{state:'approved'}});
  else await write.put('/bankLineMatches/'+a.matchId,{bankLineMatch:{isApproved:true}});
- const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved',booking);
+ const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved',true);
  if(stable(financial(after.daybookTransactionLines))!==stable(financial(before.daybookTransactionLines))||stable(after.attachments)!==stable(before.attachments)||after.daybookTransaction.entryDate!==before.daybookTransaction.entryDate||after.daybookTransaction.description!==before.daybookTransaction.description)throw new Error('Entry or attachments changed during finalization');
- const verified=await posted(read,orgId,after,undefined,booking?taxRates:undefined);
+ const verified=await posted(read,orgId,after,undefined,taxRates);
  if(booking){
  if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
  return{...after,...verified,reasoning:a.reasoning};
