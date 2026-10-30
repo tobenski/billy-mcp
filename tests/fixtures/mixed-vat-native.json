@@ -1,0 +1,529 @@
+[
+  {
+    "name": "DK K KR KF",
+    "lines": [
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      },
+      {
+        "accountId": "expense",
+        "amount": 15,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KF"
+      },
+      {
+        "accountId": "expense",
+        "amount": 125,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "K"
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KR"
+      }
+    ],
+    "postings": [
+      {
+        "accountId": "expense",
+        "amount": 15,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KF"
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "K"
+      },
+      {
+        "accountId": "purchaseTax",
+        "amount": 5,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KR",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "expense",
+        "amount": 95,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KR"
+      },
+      {
+        "accountId": "purchaseTax",
+        "amount": 25,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "K",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      }
+    ],
+    "rates": [
+      {
+        "id": "K",
+        "predefinedTag": "p_dk_25",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "tax",
+            "share": 1
+          }
+        ]
+      },
+      {
+        "id": "KR",
+        "predefinedTag": "p_dk_representation_full",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "tax",
+            "share": 0.25
+          }
+        ]
+      },
+      {
+        "id": "KF",
+        "predefinedTag": "p_dk_no_deduction",
+        "deductionComponents": []
+      }
+    ]
+  },
+  {
+    "name": "EU KVE KYE",
+    "lines": [
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KVE"
+      },
+      {
+        "accountId": "expense",
+        "amount": 140,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYE"
+      },
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      }
+    ],
+    "postings": [
+      {
+        "accountId": "purchaseTax",
+        "amount": 35,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYE",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "euTaxGoods",
+        "amount": 25,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "KVE",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "euTaxServices",
+        "amount": 35,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "KYE",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KVE"
+      },
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      },
+      {
+        "accountId": "expense",
+        "amount": 140,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYE"
+      },
+      {
+        "accountId": "purchaseTax",
+        "amount": 25,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KVE",
+        "salesTaxReturnId": "quarter2026_4"
+      }
+    ],
+    "rates": [
+      {
+        "id": "KVE",
+        "predefinedTag": "p_dk_eu_goods_full",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "netAmount",
+            "share": 0.25
+          },
+          {
+            "accountId": "euTaxGoods",
+            "source": "netAmount",
+            "share": -0.25
+          }
+        ]
+      },
+      {
+        "id": "KYE",
+        "predefinedTag": "p_dk_eu_services_full",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "netAmount",
+            "share": 0.25
+          },
+          {
+            "accountId": "euTaxServices",
+            "source": "netAmount",
+            "share": -0.25
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "KYU KOB KVU",
+    "lines": [
+      {
+        "accountId": "expense",
+        "amount": 40,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KVU"
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYU"
+      },
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KOB"
+      }
+    ],
+    "postings": [
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYU"
+      },
+      {
+        "accountId": "salesTax",
+        "amount": 25,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "KOB",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "expense",
+        "amount": 40,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KVU"
+      },
+      {
+        "accountId": "bank",
+        "amount": 240,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      },
+      {
+        "accountId": "purchaseTax",
+        "amount": 25,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KOB",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "euTaxServices",
+        "amount": 25,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "KYU",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "expense",
+        "amount": 100,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KOB"
+      },
+      {
+        "accountId": "purchaseTax",
+        "amount": 25,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": "KYU",
+        "salesTaxReturnId": "quarter2026_4"
+      }
+    ],
+    "rates": [
+      {
+        "id": "KYU",
+        "predefinedTag": "p_dk_non_eu_services_full",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "netAmount",
+            "share": 0.25
+          },
+          {
+            "accountId": "euTaxServices",
+            "source": "netAmount",
+            "share": -0.25
+          }
+        ]
+      },
+      {
+        "id": "KOB",
+        "predefinedTag": "p_dk_reverse_full",
+        "deductionComponents": [
+          {
+            "accountId": "purchaseTax",
+            "source": "netAmount",
+            "share": 0.25
+          },
+          {
+            "accountId": "salesTax",
+            "source": "netAmount",
+            "share": -0.25
+          }
+        ]
+      },
+      {
+        "id": "KVU",
+        "predefinedTag": "p_dk_non_eu_goods_full",
+        "deductionComponents": []
+      }
+    ]
+  },
+  {
+    "name": "all sales codes",
+    "lines": [
+      {
+        "accountId": "sales",
+        "amount": 20,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "S"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SVU"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SYU"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SVE"
+      },
+      {
+        "accountId": "bank",
+        "amount": 50,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SOB"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SF"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SYE"
+      }
+    ],
+    "postings": [
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SYE"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SF"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SYU"
+      },
+      {
+        "accountId": "salesTax",
+        "amount": 4,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "S",
+        "salesTaxReturnId": "quarter2026_4"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SVU"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SVE"
+      },
+      {
+        "accountId": "sales",
+        "amount": 5,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "SOB"
+      },
+      {
+        "accountId": "sales",
+        "amount": 16,
+        "side": "credit",
+        "currencyId": "DKK",
+        "taxRateId": "S"
+      },
+      {
+        "accountId": "bank",
+        "amount": 50,
+        "side": "debit",
+        "currencyId": "DKK",
+        "taxRateId": null
+      }
+    ],
+    "rates": [
+      {
+        "id": "S",
+        "predefinedTag": "s_dk_25",
+        "deductionComponents": [
+          {
+            "accountId": "salesTax",
+            "source": "tax",
+            "share": 1
+          }
+        ]
+      },
+      {
+        "id": "SVE",
+        "predefinedTag": "s_dk_eu_goods_rubrik_b",
+        "deductionComponents": []
+      },
+      {
+        "id": "SYE",
+        "predefinedTag": "s_dk_eu_services",
+        "deductionComponents": []
+      },
+      {
+        "id": "SVU",
+        "predefinedTag": "s_dk_non_eu_goods",
+        "deductionComponents": []
+      },
+      {
+        "id": "SYU",
+        "predefinedTag": "s_dk_non_eu_services",
+        "deductionComponents": []
+      },
+      {
+        "id": "SOB",
+        "predefinedTag": "s_dk_0",
+        "deductionComponents": []
+      },
+      {
+        "id": "SF",
+        "predefinedTag": "s_dk_vat_exempt",
+        "deductionComponents": []
+      }
+    ]
+  }
+]
