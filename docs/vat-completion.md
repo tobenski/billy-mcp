@@ -1,13 +1,13 @@
-# VAT completion: next live-test gate
+# VAT completion: live test status
 
 Four tools are added on the isolated test Worker. Production remains unchanged.
 
 | Tool | Implemented behavior | Live status |
 | --- | --- | --- |
-| `get_test_vat_period` | Native return, payments and revision; does not calculate a replacement report | Awaiting connection refresh |
-| `set_test_vat_return_settlement` | Set/reopen an ended, unpaid period without payment records; optimistic revision, journal, native readback | Awaiting past-period fixture and live test |
-| `create_test_partial_vat_rate` | Native custom 25% purchase VAT rate with explicit deduction percentage and embedded component | Awaiting native API capability test |
-| `close_test_booking_operation` | Verify approved content against original pending booking revision and actual ledger; complete journal only | Awaiting live recovery of two historical operations |
+| `get_test_vat_period` | Native return, payments and revision; does not calculate a replacement report | Live-tested on Q3 and Q4 |
+| `set_test_vat_return_settlement` | Set/reopen an ended, unpaid period without payment records; optimistic revision, journal, native readback | Zero-balance Q3 settled, reopened and restored; nonzero amounts still untested |
+| `create_test_partial_vat_rate` | Native custom 25% purchase VAT rate with explicit deduction percentage and embedded component | Attempt failed; full native rate list still contains only 15 predefined codes. Original operation remains pending; precise upstream reason unavailable |
+| `close_test_booking_operation` | Verify approved content against original pending booking revision and actual ledger; complete journal only | Both historical bookings verified and journal completed without native writes |
 
 ## Boundaries
 
@@ -19,9 +19,13 @@ Booking recovery has no native write client. It reconstructs the original draft 
 
 ## Validation
 
-261 automated tests pass, including custom-code duplicate/account/readback guards, period ownership and payment checks, ended-period settlement/reopen, stale revision rejection, uncertain-write retry protection, and evidence-based booking recovery. Typecheck and Worker bundle build pass. These are local tests; they do not establish native API support for new writes.
+263 automated tests pass, including custom-code duplicate/account/readback guards, period ownership and payment checks, ended-period settlement/reopen, stale revision rejection, uncertain-write retry protection, and evidence-based booking recovery. Typecheck and Worker bundle build pass. These are local tests; they do not establish native API support for new writes.
 
-After deploying, refresh the Billy-test connection to discover the four new tools (88 total with writes enabled). Then read the current VAT period and test both recovery operations with fresh approved revisions. Test custom-code creation and ended-period settlement on synthetic records, inspecting uncertain writes before any further attempt.
+Live tests found that settlement also sets `settledAmount` from null to the return total. The readback validator now checks this value separately. An exact-revision recovery path completes only a proven existing zero-period settlement without another native write. Tests cover changed evidence and journal conflicts.
+
+Both old pending booking operations are complete. Synthetic transactions 77 and 78 created and reversed a Q3 purchase (100 expense, 25 VAT, 125 offline bank), leaving every affected account and the Q3 VAT report net zero. Q3 settlement/reopen succeeded after the fix; final `isSettled=false`, `settledAmount=null`, no payments, and exactly the original period revision. Current-quarter settlement was refused before native writes.
+
+Custom-code attempt `b1500001-1030-4000-8000-000000000001` remains pending. No custom rate appears in a complete native listing. This is not proof of a specific Billy restriction: the original upstream error was not retained. Do not retry under a new operation ID. Diagnostic retention and resolution of this pending operation remain necessary.
 
 ## Still required before calling the entire VAT area complete
 
