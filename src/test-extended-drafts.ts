@@ -1,3 +1,4 @@
+import {standardVatRates} from './test-vat.js';
 import type {McpServer} from '@modelcontextprotocol/server';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
@@ -57,22 +58,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||l.currencyId!=='DKK'))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
  }
  // Validate both existing and proposed tax codes, including header-only changes.
- const taxIds=new Set<string>([...(lines??[]),...(before?.daybookTransactionLines??[])].map((l:any)=>l.taxRateId).filter(Boolean));
- if(taxIds.size){
- const rates=await read.fetchAll('/taxRates','taxRates',{organizationId:orgId});
- for(const taxId of taxIds){
- const rate=rates.find((r:any)=>r.id===taxId);
- if(!rate||rate.organizationId!==orgId||rate.isActive!==true||rate.isPredefined!==true||rate.rate!==0.25||rate.taxRateGroup!=='local'||!['p_dk_25','s_dk_25'].includes(rate.predefinedTag)||rate.isMissingStandardTaxRate!==false)throw new NoWriteError('Only active standard Danish 25% purchase/sales VAT codes are supported');
- const purchase=rate.predefinedTag==='p_dk_25';
- if(rate.appliesToPurchases!==purchase||rate.appliesToSales!==!purchase)throw new NoWriteError('Unexpected VAT applicability');
- const components=await read.fetchAll('/taxRateDeductionComponents','taxRateDeductionComponents',{taxRateId:taxId});
- if(components.length!==1||components[0].taxRateId!==taxId||components[0].source!=='tax'||components[0].share!==1)throw new NoWriteError('Only full standard VAT deduction components supported');
- validId(components[0].accountId);
- const {account}=await read.get('/accounts/'+components[0].accountId);
- if(account?.organizationId!==orgId||account.isArchived)throw new NoWriteError('Invalid VAT account');
- taxRates.push({...rate,deductionComponents:components});
- }
- }
+ taxRates=await standardVatRates(read,orgId,[...(lines??[]),...(before?.daybookTransactionLines??[])]);
  for(const sourceId of new Set(attachmentIds)){
  const {attachment}=await read.get('/attachments/'+sourceId);
  if(attachment?.id!==sourceId||attachment.organizationId!==orgId)throw new NoWriteError('Invalid attachment organization or ID');
@@ -105,7 +91,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  for(const k of ['entryDate','description','voucherNo'])if(fields[k]!==undefined&&after.daybookTransaction[k]!==fields[k])throw new Error('Header readback mismatch');
  if(stable(comparable(after.daybookTransactionLines))!==stable(comparable(lines??before.daybookTransactionLines)))throw new Error('Line replacement readback mismatch');
  if(existing.some((x:any)=>!after.attachments.some((y:any)=>stable(x)===stable(y))))throw new Error('Existing attachment changed');
- return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['DKK; gross amounts only; standard Danish 25% purchase/sales VAT or no VAT.','VAT booking and reversal are not enabled by this draft operation; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
+ return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['DKK; gross amounts only; standard Danish 25% purchase/sales VAT or no VAT.','Booking and reversal require separate explicit tools; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
  }));
  }catch(e){return errorResult(e);}};
 }
