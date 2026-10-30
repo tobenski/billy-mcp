@@ -26,7 +26,7 @@ function normalize(lines:any[]){
  if(!Number.isFinite(l.amount)||l.amount<=0||l.amount>1000000||Math.abs(l.amount*100-Math.round(l.amount*100))>1e-7)throw new NoWriteError('Invalid amount; use positive amounts with at most two decimals');
  const currency=l.currencyId??'DKK';
  if(!['DKK','EUR'].includes(currency))throw new NoWriteError('Only DKK and explicit EUR draft amounts supported');
- if(currency==='EUR'){if(l.taxRateId!=null||!Number.isFinite(l.baseAmount)||l.baseAmount<=0||l.baseAmount>1000000||Math.abs(l.baseAmount*100-Math.round(l.baseAmount*100))>1e-7)throw new NoWriteError('EUR drafts require positive two-decimal DKK baseAmount and no VAT');}
+ if(currency==='EUR'){if(!Number.isFinite(l.baseAmount)||l.baseAmount<=0||l.baseAmount>1000000||Math.abs(l.baseAmount*100-Math.round(l.baseAmount*100))>1e-7)throw new NoWriteError('EUR drafts require positive two-decimal DKK baseAmount');}
  else if(l.baseAmount!==undefined&&l.baseAmount!==l.amount)throw new NoWriteError('DKK baseAmount must equal amount');
  if(l.taxRateId!=null){validId(l.taxRateId);if(l.amountBasis!=='gross')throw new NoWriteError('VAT lines require explicit amountBasis gross; net input is not supported');}
  if(l.amountBasis!==undefined&&l.amountBasis!=='gross')throw new NoWriteError('Only gross amountBasis is supported');
@@ -61,8 +61,6 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['DKK','EUR'].includes(l.currencyId)))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
  }
  if(before)normalize(before.daybookTransactionLines.map((l:any)=>({...l,text:l.text??'',baseAmount:l.baseAmount??undefined,amountBasis:'gross'})));
- const effectiveLines=lines??before?.daybookTransactionLines??[];
- if(effectiveLines.some((l:any)=>l.currencyId==='EUR')&&effectiveLines.some((l:any)=>l.taxRateId))throw new NoWriteError('EUR drafts cannot contain VAT lines in this phase');
  // Validate both existing and proposed tax codes, including header-only changes.
  taxRates=await standardVatRates(read,orgId,[...(lines??[]),...(before?.daybookTransactionLines??[])]);
  for(const sourceId of new Set(attachmentIds)){
@@ -97,7 +95,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  for(const k of ['entryDate','description','voucherNo'])if(fields[k]!==undefined&&after.daybookTransaction[k]!==fields[k])throw new Error('Header readback mismatch');
  if(stable(comparable(after.daybookTransactionLines))!==stable(comparable(lines??before.daybookTransactionLines)))throw new Error('Line replacement readback mismatch');
  if(existing.some((x:any)=>!after.attachments.some((y:any)=>stable(x)===stable(y))))throw new Error('Existing attachment changed');
- return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['EUR drafts only: explicit DKK baseAmount, no VAT; booking and full reversal supported, no bank matching. DKK; gross amounts only; supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes, EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping or no VAT. Zero-rate gross is the invoice amount; non-EU goods import VAT is separate and never inferred from the invoice.','Booking and reversal require separate explicit tools; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
+ return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['EUR drafts only: explicit gross DKK baseAmount; only ordinary Danish K/S VAT or no VAT; booking and full reversal supported, no bank matching. DKK; gross amounts only; supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes, EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping or no VAT. Zero-rate gross is the invoice amount; non-EU goods import VAT is separate and never inferred from the invoice.','Booking and reversal require separate explicit tools; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
  }));
  }catch(e){return errorResult(e);}};
 }
