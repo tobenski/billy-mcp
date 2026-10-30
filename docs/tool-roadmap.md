@@ -1,6 +1,6 @@
 # Reserverede Billy-værktøjer, kontrakt v1
 
-18 stubs, to implementerede fase 1-kladdeværktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
+16 stubs, fire implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
 
 Alle stubs returnerer isError=true og NOT_IMPLEMENTED uden API-kald, journalreservation eller regnskabsændring. Skriveværktøjer er markeret som skrivende efter deres tilsigtede funktion, selv om stubs ikke skriver. Ingen status skifter automatisk til aktiv.
 
@@ -43,6 +43,10 @@ Implementér ét værktøj ad gangen og bevar navn/input når muligt. Opdatér s
 | resolve_review | resolve_test_review |
 
 Eksisterende kladdesletning er begrænset til testværktøjernes egne kladder. Moms- og søgefunktioner følger Billys eksisterende semantik. Udvidede kladder er reserveret særskilt, så nuværende kladdekontrakter bevares.
+
+## Bilagsværktøjer
+
+get_test_document og search_test_documents er implementeret som native læsninger. Søgning bruger Billys dokumentfelter; invoiceNumber afvises, og currencyId filtreres kun på den aktuelle side. Se [bilagssøgning og live-test](document-search.md).
 
 ## Kontrakter
 
