@@ -22,7 +22,7 @@ Billy sets `settledAmount` as well as the flag. The validator checks it separate
 
 ## Currency and OSS
 
-- Supported write flows are DKK only. Foreign-currency lines and conversions are rejected; native currency data can be read, but this does not implement foreign-currency booking, payment exchange differences or VAT conversion.
+- EUR drafts without VAT now support explicit positive two-decimal DKK `baseAmount`. Create/update balance in DKK and verify exact readback. Other foreign currencies, automatic rates, EUR booking/matching and VAT conversion remain blocked. See `currency-drafts.md`.
 - OSS has no implemented write/reporting workflow or validated tax-code mapping. Existing EU-sale Rubrik B tests do not establish OSS support.
 - Unsupported tax codes are rejected by an explicit standard-code validator. Do not route OSS transactions through an ordinary EU code as a substitute.
 - Next currency work requires native invoice/entry conversion evidence, rounding, payment differences, bank matching and reversals. OSS requires a separate capability investigation and test specification.
