@@ -81,7 +81,7 @@ export class BillyClient {
         body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         signal: this.requestSignal(),
         // A remote redirect must never receive the Billy credential.
-        ...(this.readOnly ? { redirect: 'manual' as const } : {})
+        redirect: 'manual' as const
       });
     } catch (err: any) {
       throw new Error(
