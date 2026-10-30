@@ -11,8 +11,9 @@ on the same DKK bank account, and their signed sum in cents must exactly equal
 one bank line. No partial allocation, fees, differences, unrelated entries, invoices
 or foreign currency are supported. Approval is separate from linking.
 
-Grouped approved matches cannot yet be reopened by the unlink tool. Corrections of
-corrections remain unsupported. Pending writes require inspection, never a retry
+Grouped approved matches can now be reopened and fully unlinked with an explicit
+`group:MATCH_ID` subjectReference, as verified below. Corrections of corrections
+remain unsupported. Pending writes require inspection, never a retry
 with a new operation ID. Concurrent Billy UI edits cannot be locked atomically.
 
 ### Live verification
@@ -122,3 +123,31 @@ is not atomic. Do not retry with a new UUID or assume rollback. Inspect the exac
 match, posting and journal before any recovery. Concurrent UI changes are not
 atomically locked. The initial approved match is captured in the successful result;
 for a pending operation, preserve the caller's preflight snapshot for investigation.
+
+
+## Group reopen/unlink (2026-10-30)
+
+`unlink_test_bank_line` accepts `subjectReference: group:MATCH_ID` with the exact
+match ID, bank line ID and fresh revision. This explicitly requests removal of
+all associations in a verified original/correction pair (2–3 bank postings).
+A single `posting:ID` request still cannot delete its peers. Arbitrary groups,
+missing/duplicate legs, unrelated transactions, stale evidence and differences
+are refused before mutation. An already unapproved complete group may also be removed.
+
+For an approved group, the handler first reopens the native match and verifies all
+bank postings became unmatched. It then deletes the exact captured associations,
+verifies an empty unapproved match and unchanged ledger postings/bank lines.
+The completed journal retains the prior match and associations. This is not atomic:
+a timeout after reopening or during deletion remains pending, and must be inspected
+without a new operation ID. No automatic rollback or retry is performed.
+Relinking and approval remain separate explicit operations.
+
+Live synthetic roundtrip: reopened the 125 DKK group, removed its three associations,
+relinked the same original/correction pair and approved it. Fresh reads confirmed
+identical bank line, same three posting references, unchanged source review evidence
+including postings/files, and approved native match. Replaying the old unlink
+returned the historical result and left the newly approved group approved.
+191 automated tests plus typecheck and Worker build passed, including approved and
+unapproved unlink, incomplete groups, stale revisions, single-post protection,
+pending reopen/delete failures, replay after reapproval and request-budget checks.
+Only the isolated test Worker was deployed; existing schemas/tool count are unchanged.
