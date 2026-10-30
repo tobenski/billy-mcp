@@ -26,7 +26,7 @@ const updateSchema = z.object({
 }).strict().refine(v => v.description !== undefined || v.extendedDescription !== undefined || v.voucherNo !== undefined, 'Supply a change');
 const deleteSchema = z.object({ operationId, id, expectedDescription: z.string() }).strict();
 
-class NoWriteError extends Error {}
+export class NoWriteError extends Error {}
 
 type Row = { fingerprint: string; state: string; result: string | null };
 function canonical(value: any): string {
