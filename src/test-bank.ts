@@ -10,8 +10,8 @@ const sorted=(rows:any[])=>[...rows].sort((a,b)=>String(a.id).localeCompare(Stri
 const cents=(n:any)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0||Math.abs(n*100-Math.round(n*100))>1e-7)throw new NoWriteError('Expected positive amount with at most two decimals');return Math.round(n*100);};
 export const bankDescriptions:Record<string,string>={
  get_test_bank_line:'Implemented and live-tested phase 1: read one bank line, account, native match, grouped bank lines and associations with optimistic revision. No writes or analysis.',
- reconcile_test_bank_line:'Implemented and live-tested phase 1. Link exactly one test-tool-created DKK draft to an existing unapproved match containing exactly one bank line. Exact amount, side and bank account required. Other subject types, split amounts, fees and approval are refused. expectedRevision from get_test_bank_line.',
- unlink_test_bank_line:'Implemented and live-tested phase 1. Delete one association for a test-tool-created draft from an unapproved single-line match. Preserve line, group, draft and other associations. expectedRevision from get_test_bank_line. Never approves or deletes a bank line.',
+ reconcile_test_bank_line:'Implemented and live-tested phase 1. Link exactly one test-tool-created DKK draft to an existing unapproved match containing exactly one bank line. Exact amount, side and bank account required. Also accepts one already-booked native test transaction with exactly one identical bank posting. Split amounts, fees and approval are refused. expectedRevision from get_test_bank_line.',
+ unlink_test_bank_line:'Implemented and live-tested phase 1. Delete one association for a test-tool-created draft from an unapproved single-line match. Preserve line, group, draft and other associations. expectedRevision from get_test_bank_line. An exact posting:ID reference also supports a booked test entry: an approved match is reopened and the sole posting association removed, with before/after evidence. Never deletes a bank line or ledger posting; reapproval is separate.',
 };
 export async function bankSnapshot(read:BillyClient,orgId:string,lineId:string){
  id.parse(lineId);const {organization}=await read.get('/organization');if(organization?.id!==orgId)throw new Error('Test organization mismatch');
@@ -44,6 +44,7 @@ export function bankHandler(read:BillyClient,orgId:string,name:string,write?:Bil
  if(name==='get_test_bank_line')return jsonResult(await bankSnapshot(read,orgId,a.id));
  if(!write||!db)throw new NoWriteError('Test writes disabled');
  id.parse(a.bankLineId);
+ if(name==='reconcile_test_bank_line'&&a.subjects?.[0]?.type==='transaction'||name==='unlink_test_bank_line'&&a.subjectReference?.startsWith('posting:')){const {postedBankHandler}=await import('./test-bank-posted.js');return postedBankHandler(read,write,db,orgId,name,a);}
  const linking=name==='reconcile_test_bank_line';
  let reference:string;
  if(linking){if(a.subjects.length!==1||a.subjects[0].type!=='daybookTransaction')throw new NoWriteError('Phase 1 supports exactly one daybookTransaction subject');id.parse(a.subjects[0].id);reference='daybookTransaction:'+a.subjects[0].id;}
