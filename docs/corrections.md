@@ -76,4 +76,5 @@ existing bank line with the correct amount, and approved both. All six bank legs
 were matched; originals, files and bank lines were preserved. A125 against a120
 bank line was rejected without mutation. Replay caused no duplicate approval.
 187 automated tests plus typecheck/build passed. See bank-links.md for boundaries:
-grouped approved matches cannot yet be reopened, and correction chains are blocked.
+grouped approved matches can now be reopened with an explicit group reference
+(see the later 191-test checkpoint); correction chains remain blocked.
