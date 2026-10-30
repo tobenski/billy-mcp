@@ -8,7 +8,7 @@ import * as z from 'zod/v4';
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const stable=(v:any):string=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
 export const correctionDescriptions:Record<string,string>={
- propose_test_booked_change:'Create a correction DRAFT containing reversal of all original posted DKK lines plus the supplied full replacement. Original is never changed or voided. Test entries only; bank-matched entries, VAT and currency conversions refused. transactionId is a native transaction ID; expectedRevision comes from get_transaction. Copies source attachment links. Requires separate book_test_daybook_draft after review.',
+ propose_test_booked_change:'Create a correction DRAFT containing reversal of all original posted DKK lines plus the supplied full replacement. Original is never changed or voided. Test entries only; bank-matched entries allow non-bank reclassification only with identical bank account, amount and side in the full replacement; no new bank lines are created. VAT and currency conversions refused. transactionId is a native transaction ID; expectedRevision comes from get_transaction. Copies source attachment links. Requires separate book_test_daybook_draft after review.',
  propose_test_reversal:'Create a reversal-only DRAFT for a native test transaction, preserving the original. DKK without VAT only; bank-matched entries refused. Uses expectedRevision from get_transaction. No immediate ledger effect, no native void and no deletion; book separately after review.',
 };
 export async function correctionSource(read:BillyClient,orgId:string,transactionId:string){
@@ -17,15 +17,43 @@ export async function correctionSource(read:BillyClient,orgId:string,transaction
  if(transaction?.id!==transactionId||transaction.organizationId!==orgId||transaction.isVoided||transaction.isVoid||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Only active native daybook transactions may be corrected');
  const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],orgId);validate(source,'approved');
  if(source.daybookTransaction.apiType.startsWith('mcp-test:correction:'))throw new NoWriteError('Corrections of correction drafts are not supported in phase 1');
- const ledger=await posted(read,orgId,source);if(ledger.transaction.id!==transactionId||ledger.postings.some((p:any)=>p.isBankMatched!==false))throw new NoWriteError('Bank-matched or unknown bank status: resolve reconciliation separately before correction');
- const revision=await sha256(new TextEncoder().encode(stable({source,ledger})));
- return{...ledger,source,revision};
+ const ledger=await posted(read,orgId,source);
+ if(ledger.transaction.id!==transactionId||ledger.postings.some((p:any)=>typeof p.isBankMatched!=='boolean'))throw new NoWriteError('Unknown bank status');
+ let preservedBank:any=null;
+ const matched=ledger.postings.filter((p:any)=>p.isBankMatched);
+ if(matched.length){
+  if(matched.length!==1)throw new NoWriteError('Exactly one matched bank posting supported');
+  const posting=matched[0];
+  const associations=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{subjectReference:'posting:'+posting.id});
+  const links=associations.filter((a:any)=>a.subjectReference==='posting:'+posting.id);
+  if(links.length!==1)throw new NoWriteError('Expected one native bank association');
+  const rows=[];for(const status of ['booked','pending'])rows.push(...await read.fetchAll('/bankLines','bankLines',{accountId:posting.accountId,status}));
+  const lines=Array.from(new Map(rows.filter((l:any)=>l.matchId===links[0].matchId).map((l:any)=>[l.id,l])).values()) as any[];
+  if(lines.length!==1)throw new NoWriteError('Expected one matched bank line');
+  const {account}=await read.get('/accounts/'+posting.accountId);
+  const {bankLineMatch:match}=await read.get('/bankLineMatches/'+links[0].matchId);
+  const matchLinks=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:links[0].matchId});
+  if(account?.id!==posting.accountId||account.organizationId!==orgId||lines[0].accountId!==posting.accountId||match?.id!==links[0].matchId||match.accountId!==posting.accountId||matchLinks.some((l:any)=>l.matchId!==match.id))throw new NoWriteError('Bank evidence ownership mismatch');
+  const bank={bankLine:lines[0],account,match,lines,associations:matchLinks};
+  if(bank.account.isBankAccount!==true||bank.account.isArchived||bank.account.currencyId!=='DKK'||bank.match?.isApproved!==true||bank.match.differenceType||bank.match.feeAccountId||bank.lines.length!==1||bank.associations.length!==1||bank.associations[0].subjectReference!=='posting:'+posting.id||bank.bankLine.amount!==posting.amount||bank.bankLine.side!==posting.side||bank.match.amount!==posting.amount||bank.match.side!==posting.side)throw new NoWriteError('Unsupported bank match');
+  const bankAccountIds:string[]=[];
+  for(const accountId of new Set(ledger.postings.map((p:any)=>p.accountId))){
+   const account=accountId===posting.accountId?bank.account:(await read.get('/accounts/'+accountId)).account;
+   if(account?.organizationId!==orgId||typeof account.isBankAccount!=='boolean')throw new NoWriteError('Unknown account bank status');
+   if(account.isBankAccount)bankAccountIds.push(accountId as string);
+  }
+  if(bankAccountIds.length!==1||bankAccountIds[0]!==posting.accountId||ledger.postings.filter((p:any)=>p.accountId===posting.accountId).length!==1)throw new NoWriteError('Exactly one bank leg supported');
+  preservedBank={posting,bank};
+ }
+ const evidence=preservedBank?{source,ledger,preservedBank}:{source,ledger};
+ const revision=await sha256(new TextEncoder().encode(stable(evidence)));
+ return{...ledger,source,revision,preservedBank};
 }
 export async function transactionWithRevision(read:BillyClient,orgId:string,transactionId:string){
  // Ordinary records remain readable even when not eligible for correction.
  id.parse(transactionId);const {transaction}=await read.get('/transactions/'+transactionId);if(transaction?.organizationId!==orgId||transaction.id!==transactionId)throw new Error('Unexpected transaction');
- try {const source=await correctionSource(read,orgId,transactionId);return {...source,correctionEligible:true};}
- catch{return {transaction,correctionEligible:false,revision:null,limitation:'Only active, unbankmatched, test-created DKK entries without VAT are eligible. A lookup failure can also prevent eligibility verification.'};}
+ try {const source=await correctionSource(read,orgId,transactionId);return {...source,correctionEligible:true,correctionMode:source.preservedBank?'non_bank_reclassification':'reversal_and_replacement',reversalEligible:!source.preservedBank};}
+ catch{return {transaction,correctionEligible:false,revision:null,limitation:'Only active test-created DKK entries without VAT and with supported bank evidence are eligible. A lookup failure can also prevent eligibility verification.'};}
 }
 export async function verifyCorrection(read:BillyClient,db:JournalDB,orgId:string,draft:any){
  const row=await db.prepare("SELECT result FROM operations WHERE state = 'complete' AND id LIKE ? AND json_extract(result, '$.correctionDraft.daybookTransaction.id') = ?").bind(orgId+':%',draft.daybookTransaction.id).first<{result:string}>();
@@ -33,6 +61,12 @@ export async function verifyCorrection(read:BillyClient,db:JournalDB,orgId:strin
  if(draft.revision!==saved.correctionDraft.revision)throw new NoWriteError('Correction draft changed; delete and prepare a new proposal');
  const current=await correctionSource(read,orgId,saved.sourceTransactionId);
  if(current.revision!==saved.sourceRevision)throw new NoWriteError('Correction source changed; prepare a fresh proposal');
+ if(saved.bankMatchPreserved){
+  for(const accountId of new Set(draft.daybookTransactionLines.map((l:any)=>l.accountId))){
+   const {account}=await read.get('/accounts/'+accountId);
+   if(account?.organizationId!==orgId||account.isBankAccount!==false)throw new NoWriteError('Bank-preserving correction may contain only verified non-bank accounts');
+  }
+ }
 }
 export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
  id.parse(a.transactionId);z.iso.date().parse(a.entryDate);if(!a.description||a.description.length>100)throw new NoWriteError('Description must be 1 to 100 characters');
@@ -48,8 +82,22 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  if(a.entryDate<original.transaction.entryDate)throw new NoWriteError('Correction date cannot precede original posting date');
  const existing=await read.fetchAll('/daybookTransactions','daybookTransactions',{organizationId:orgId,apiType:marker});
  if(existing.some((h:any)=>h.apiType===marker&&h.state!=='voided'))throw new NoWriteError('An active correction proposal or booked correction already exists for this source');
- const reversal=original.postings.map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK'}));
- lines=[...reversal,...replacement];validate({daybookTransaction:{state:'draft',apiType:marker},daybookTransactionLines:lines},'draft');
+ let sourceLines=original.postings,replacementLines=replacement;
+ if(original.preservedBank){
+  if(reversalOnly)throw new NoWriteError('BANK_MATCH_PRESERVED: reversal requires separately resolving bank reconciliation');
+  const bp=original.preservedBank.posting;
+  const bankLines=[];
+  for(const l of replacement){
+   const {account}=await read.get('/accounts/'+l.accountId);
+   if(account?.organizationId!==orgId||typeof account.isBankAccount!=='boolean')throw new NoWriteError('Unknown replacement account bank status');
+   if(account.isBankAccount)bankLines.push(l);
+  }
+  if(bankLines.length!==1||bankLines[0].accountId!==bp.accountId||bankLines[0].amount!==bp.amount||bankLines[0].side!==bp.side)throw new NoWriteError('BANK_MATCH_PRESERVED: bank account, amount and side must remain identical; resolve reconciliation separately for bank amount changes');
+  sourceLines=original.postings.filter((p:any)=>p.id!==bp.id);
+  replacementLines=replacement.filter((l:any)=>l.accountId!==bp.accountId);
+ }
+ const reversal=sourceLines.map((p:any)=>({accountId:p.accountId,amount:p.amount,side:p.side==='debit'?'credit':'debit',text:('Tilbagefoersel: '+(p.text??'')).slice(0,100),currencyId:'DKK'}));
+ lines=[...reversal,...replacementLines];validate({daybookTransaction:{state:'draft',apiType:marker},daybookTransactionLines:lines},'draft');
  for(const accountId of new Set(lines.map(l=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');}
  if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new NoWriteError('Source changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Correction preflight failed. No write performed.');}
@@ -61,6 +109,6 @@ export function correctionHandler(read:BillyClient,write:BillyClient,db:JournalD
  if(stable(canon(after.daybookTransactionLines))!==stable(canon(lines!))||after.daybookTransaction.entryDate!==a.entryDate||after.daybookTransaction.description!==a.description)throw new Error('Correction readback mismatch');
  const files=(xs:any[])=>[...new Set(xs.map(x=>x.fileId))].sort();if(stable(files(after.attachments))!==stable(files(original.source.attachments)))throw new Error('Copied file links differ');
  if((await correctionSource(read,orgId,a.transactionId)).revision!==original.revision)throw new Error('Original changed during proposal creation');
- return{kind:reversalOnly?'reversal_only':'reversal_and_replacement',sourceTransactionId:a.transactionId,sourceRevision:original.revision,originalUnchanged:true,correctionDraft:after,reasoning:a.reasoning,ledgerEffect:'none_until_separately_booked',nativeVoid:false};
+ return{kind:original.preservedBank?'non_bank_reclassification':reversalOnly?'reversal_only':'reversal_and_replacement',bankMatchPreserved:!!original.preservedBank,sourceTransactionId:a.transactionId,sourceRevision:original.revision,originalUnchanged:true,correctionDraft:after,reasoning:a.reasoning,ledgerEffect:'none_until_separately_booked',nativeVoid:false};
  }));
  }catch(e){return errorResult(e);}};}
