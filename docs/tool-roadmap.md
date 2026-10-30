@@ -1,4 +1,6 @@
-# Reserverede Billy-værktøjer, kontrakt v1
+# Billy-værktøjer, kontrakt v1
+
+Aktuel samlet vurdering og prioritering: [Status mod Numina](capability-audit-2026-10-30.md).
 
 4 stubs, 18 implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 84 værktøjer. Produktionsserveren er uændret.
 
@@ -50,11 +52,11 @@ get_test_document og search_test_documents er implementeret som native læsninge
 
 ## Bankværktøjer
 
-get_test_bank_line, reconcile_test_bank_line og unlink_test_bank_line er implementeret med status implemented_phase1. Tilknytning og fjernelse er live-verificeret på den importerede testbanklinje; replay, stale revision og bevaring af banklinje/kladde/PDF er kontrolleret. Fase 1 tillader kun én banklinje i eksisterende ikke-godkendt match og én DKK-testkladde. Se [bankforløb og nødvendig testlinje](bank-links.md).
+get_test_bank_line, reconcile_test_bank_line og unlink_test_bank_line er implementeret med status implemented_phase1. Tilknytning og fjernelse er live-verificeret på den importerede testbanklinje; replay, stale revision og bevaring af banklinje/kladde/PDF er kontrolleret. Der understøttes én banklinje med kladde, bogført enkeltpost eller original/rettelsespar samt eksplicit genåbning; delbetalinger og gebyrer er ikke dækket. Se [bankforløb og nødvendig testlinje](bank-links.md).
 
 ## Bogføring og endelig afstemning
 
-book_test_daybook_draft og approve_test_bank_match er implementeret for testoprettede DKK-poster uden moms. En særskilt testpost er bogført og bankafstemt. Billys overgang fra kladde- til posting-tilknytning er håndteret, og journalen er afklaret efter readback. Se [forløb, tests og begrænsninger](finalization.md). Tilbageførsel er endnu ikke implementeret.
+book_test_daybook_draft og approve_test_bank_match er implementeret for testoprettede DKK-poster uden moms. En særskilt testpost er bogført og bankafstemt. Billys overgang fra kladde- til posting-tilknytning er håndteret, og journalen er afklaret efter readback. Se [forløb, tests og begrænsninger](finalization.md). Tilbageførsel er implementeret og live-testet; se [rettelser](corrections.md).
 
 ## Kontrolbemærkninger
 
@@ -159,7 +161,7 @@ Status: reserved; API: unverified.
 
 Read a bank line and native reconciliation links.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -183,7 +185,7 @@ Status: reserved; API: unverified.
 
 Read attachment details and available stored document facts; optional file metadata.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -210,7 +212,7 @@ Status: reserved; API: unverified.
 
 Search documents using explicit source-supported filters; no heuristic ranking.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -323,7 +325,7 @@ Status: reserved; API: unverified.
 
 Create a customer/supplier after duplicate checks.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -396,7 +398,7 @@ Status: reserved; API: unverified.
 
 Change only supplied contact fields; null clears optional fields.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -528,7 +530,7 @@ Status: reserved; API: unverified.
 
 Create a draft with tax, currency and optional document/contact/invoice/bank links. Null account marks unfinished input only if supported.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -688,7 +690,7 @@ Status: reserved; API: unverified.
 
 Replace full draft lines or change supplied fields; never edit booked transactions.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -855,7 +857,7 @@ Status: reserved; API: unverified.
 
 Stage an explicit full replacement for human review; never silently change booked entries.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -976,7 +978,7 @@ Status: reserved; API: unverified.
 
 Link one bank line to explicit draft or booked subjects; no automatic matching.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1051,7 +1053,7 @@ Status: reserved; API: unverified.
 
 Remove exactly one bank reconciliation association, retaining other links.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1104,7 +1106,7 @@ Status: reserved; API: unverified.
 
 Store document facts explicitly supplied by the chat; does not perform OCR or accounting analysis.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1309,7 +1311,7 @@ Status: reserved; API: unverified.
 
 Close a specific review after its issue has been resolved.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1365,7 +1367,7 @@ Status: reserved; API: unverified.
 
 Explicitly book one reviewed draft; separate from creation and editing.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1411,7 +1413,7 @@ Status: reserved; API: unverified.
 
 Explicitly approve one existing reconciliation match.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1453,7 +1455,7 @@ Status: reserved; API: unverified.
 
 Rename an account after verifying the current name.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
@@ -1498,7 +1500,7 @@ Status: reserved; API: unverified.
 
 Rename a heading/subtotal account group after verifying current name.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen for begrænsninger og live-evidens.
 
 ```json
 {
