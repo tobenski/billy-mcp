@@ -33,7 +33,7 @@ export async function downloadBytes(rawUrl: string): Promise<Uint8Array> {
   // URLs come only from Billy file metadata, never directly from MCP callers.
   // Do not follow redirects or forward the Billy API token to download hosts.
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') ||
-      !(url.hostname === 'download.billy.dk' || url.hostname.endsWith('.billysbilling.com'))) throw new Error('Unapproved Billy download host');
+      !(url.hostname === 'billysbilling-eu.s3.eu-north-1.amazonaws.com' || url.hostname === 'download.billy.dk' || url.hostname.endsWith('.billysbilling.com'))) throw new Error('Unapproved Billy download host');
   const response = await fetch(url, { method:'GET', redirect:'manual', signal:AbortSignal.timeout(15000) });
   if (!response.ok || !response.body) throw new Error('File download failed; redirects are not followed');
   if (Number(response.headers.get('content-length')) > MAX_BYTES) { await response.body.cancel(); throw new Error('Downloaded file is too large'); }
