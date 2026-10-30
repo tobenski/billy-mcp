@@ -104,11 +104,16 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
     const balance = fields.lines.reduce((s, l) => s + Math.round(l.amount * 100) * (l.side === 'debit' ? 1 : -1), 0);
     if (balance !== 0) throw new Error('Unbalanced draft. No write performed.');
     return journalRun(db, orgId, key, 'create:' + key, { action: 'create', ...fields }, async () => {
+      try {
       const books = await read.fetchAll('/daybooks', 'daybooks', { organizationId: orgId });
       if (!books.some((b:any) => b.id === fields.daybookId)) throw new NoWriteError('Invalid daybook');
       for (const accountId of new Set(fields.lines.map(l => l.accountId))) {
         const {account} = await read.get('/accounts/' + accountId);
         if (account?.organizationId !== orgId || account.isArchived || (account.currencyId && account.currencyId !== org.baseCurrencyId)) throw new NoWriteError('Invalid account');
+      }
+      } catch (error) {
+        if (error instanceof NoWriteError) throw error;
+        throw new NoWriteError('Draft preflight lookup failed. No write performed.');
       }
       const response = await write.post('/daybookTransactions', { daybookTransaction: {
         ...fields, organizationId: orgId, state: 'draft', apiType: 'mcp-test:' + key,
