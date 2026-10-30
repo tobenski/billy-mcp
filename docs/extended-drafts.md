@@ -1,10 +1,10 @@
 # Udvidede kladder, fase 1
 
-Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inputskemaer er uændrede; der er 84 værktøjer. 210 automatiske tests består, inklusive den additive bilagsudvidelse.
+Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inputskemaer er uændrede; der er 84 værktøjer. 214 automatiske tests består, inklusive additive bilag og første momsudvidelse.
 
 ## Understøttet
 
-- create_test_extended_draft: fuld balanceret kladde i DKK uden moms; 2–50 linjer, positive beløb med højst to decimaler og eksplicit debit/credit.
+- create_test_extended_draft: fuld balanceret kladde i DKK med almindelig dansk 25 % købsmoms/salgsmoms eller uden moms; 2–50 linjer, positive beløb med højst to decimaler og eksplicit debit/credit.
 - update_test_extended_draft: ændr dato, beskrivelse, bilagsnummer og/eller erstat samtlige linjer i én PUT. Kun testværktøjernes egne kladder må ændres; bogførte poster afvises.
 - get_daybook_transaction: i testserverens skrivemodus returneres desuden alle linjer, bilagstilknytninger og revision. Send revision som expectedRevision ved opdatering.
 - Reasoning gemmes i operationens journal og svar, ikke som påstået revisionshistorik hos Billy.
@@ -12,7 +12,7 @@ Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inpu
 
 ## Afgrænsning
 
-Valuta ud over DKK, moms, null-konti, betalingslinjer, kontakt-/faktura-/banktilknytninger og reviewNote understøttes endnu ikke. Supplerende felter afvises eksplicit; de ignoreres ikke. Bilag kan nu tilknyttes direkte med attachmentIds ved oprettelse eller opdatering. En redigering bevarer eksisterende bilag.
+Valuta ud over DKK, andre momskoder end standard dansk 25 %, nettobeløb, null-konti, betalingslinjer, kontakt-/faktura-/banktilknytninger og reviewNote understøttes endnu ikke. Supplerende felter afvises eksplicit; de ignoreres ikke. Bilag kan nu tilknyttes direkte med attachmentIds ved oprettelse eller opdatering. En redigering bevarer eksisterende bilag.
 
 Revisionskoden er SHA-256 af en kanonisk snapshot af header, alle linjer og bilag. Den kontrolleres ved starten og igen lige før mutation. D1 serialiserer MCP-skrivninger til samme kladde, men giver ingen atomisk lås mod ændringer i Billys brugerflade mellem kontrollen og PUT. Undgå samtidig redigering i UI. Readback er heller ikke et atomisk snapshot af flere API-kald.
 
@@ -40,3 +40,17 @@ Udeladt felt eller en tom liste fjerner aldrig bilag. Brug `remove_test_draft_at
 Kildens organisation, ID og filreference valideres før skrivning, og kilden læses igen før og efter. Eksisterende målbilag og de nye tilknytninger kontrolleres efter skrivning. Kladdeændring og bilagstilknytning er flere API-kald og ikke atomiske. Fejl efter første mutation efterlader operationen pending; opret aldrig en ny UUID som automatisk retry.
 
 Live-test med syntetiske filer: oprettelse med ét bilag; ændring fra 7 til 8 DKK samtidig med tilføjelse af et andet bilag; gentaget kilde-ID; replay; afvisning af gammel revision; bilagsopdatering med allerede tilknyttet fil uden dublet. Kildebilagene var uændrede. Begge nye tilknytninger blev fjernet med filbevaring, og den midlertidige kladde blev slettet. Ingen bogføring indgik i testen.
+
+## Moms, første del: kladder (2026-10-30)
+
+`taxRateId` kan nu være en aktiv, prædefineret standardkode `p_dk_25` eller `s_dk_25` fra samme organisation. Satsen skal være 0,25, lokal og have præcis én fuld tax-komponent med share 1 og en aktiv momskonto i organisationen. Koder vælges eksplicit af klienten; MCP udleder ikke momsbehandlingen af kontonavn eller bilag. Kontrol af fradragsret og kontering sker i chatten.
+
+Momslinjer kræver `amountBasis: "gross"`. Beløbet er inklusive moms, sendes uændret og skal sammen med de øvrige bruttolinjer balancere. `net` afvises; MCP beregner hverken momsbeløb eller afrunding. Linjer uden momskode kan blandes med momslinjer. Ingen momskode betyder ikke automatisk en specifik momsfritagelseskode.
+
+Ved redigering valideres både eksisterende og nye momskoder. Headerændringer bevarer momskoder; fuld linjeerstatning kan eksplicit tilføje, ændre eller fjerne dem. Readback kontrollerer taxRateId ud over beløb og øvrige linjefelter. Svar inkluderer de anvendte native momskoder og komponenter som konfigurationsoplysninger, ikke beregnede eller bogførte momsbeløb.
+
+Bogførings-, tilbageførsels- og korrektionsværktøjernes momsbegrænsning er uændret. Denne del dokumenterer lagring af kladder, ikke generering af korrekte finans-/momsposteringer. Det er næste testtrin. EU-moms, omvendt betalingspligt og delvist fradrag afvises.
+
+Grundlag: [Billys kassekladdevejledning](https://www.billy.dk/support/article/billy-kassekladde/) beskriver inklusive-moms-beløb; [API-dokumentationen](https://www.billy.dk/api/) beskriver taxRate-relationen på daybookTransactionLines. Live-afprøvning af kladder dokumenteres nedenfor.
+
+Live-resultat for første momsdel: købskladde 125,00 DKK med K-kode; salgskladde 125,01 DKK med S-kode. Begge gemt som draft med uændrede bruttobeløb og korrekte native taxRateId. Købskladden blev ændret til 250,01 DKK med bevaret K-kode. Replay gav ingen ny mutation; gammel revision blev afvist. Nettobeløb og repræsentationskode blev afvist. Et eksplicit negativt bogføringsforsøg blev afvist før skrivning. Begge kladder blev slettet efter testen. Ingen finans- eller momsposteringer blev oprettet; decimaltesten beviser beløbsbevaring, ikke momsafrunding ved bogføring.
