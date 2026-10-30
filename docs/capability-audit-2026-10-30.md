@@ -1,5 +1,8 @@
 # Status mod Numina — 30. oktober 2026
 
+Historisk checkpoint før rapportpakken. Tre rapportkontrakter er siden aktiveret;
+se [native rapporter](native-reports.md). Bankens indberettede saldo er fortsat ukendt.
+
 Kontrolleret mod de 27 aktuelt eksponerede Numina-værktøjer, Billy-tests live-status,
 registreringen i test-worker.ts, handlerkode og dokumenterede testresultater.
 Ingen regnskabsændringer eller nye skriveforsøg blev foretaget ved gennemgangen.
