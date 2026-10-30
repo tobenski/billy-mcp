@@ -38,8 +38,10 @@ const READ_TOOLS = new Set([
   'list_sales_tax_rules', 'list_currencies', 'billy_raw_request'
 ]);
 
-export function createReadOnlyServer(billy: BillyClient): McpServer {
-  const server = new McpServer({ name: 'billy-readonly', version: '0.3.2-worker.3' });
+export function createReadOnlyServer(
+  billy: BillyClient,
+  server = new McpServer({ name: 'billy-readonly', version: '0.3.2-worker.3' }),
+): McpServer {
   const register = server.registerTool.bind(server);
   server.registerTool = ((...args: Parameters<McpServer['registerTool']>) => {
     const tool = register(...args);
