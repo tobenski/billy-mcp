@@ -68,7 +68,7 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(bankPostings.length!==1||money(bankPostings[0].amount)!==money(bank.bankLine.amount)||bankPostings[0].side!==bank.bankLine.side||bankPostings[0].isBankMatched)throw new NoWriteError('Bank amount/side mismatch or posting already matched');
  }
  if((await draftSnapshot(read,before.daybookTransaction.id,orgId)).revision!==before.revision)throw new NoWriteError('STALE_REVISION: entry changed during preflight');
- if(booking&&before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
+ if(booking&&before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before,taxRates);}
  if(bank&&(await bankSnapshot(read,orgId,bank.bankLine.id)).revision!==bank.revision)throw new NoWriteError('STALE_REVISION: bank changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Finalization preflight failed. No write performed.');}
  if(booking)await write.put('/daybookTransactions/'+a.daybookTransactionId,{daybookTransaction:{state:'approved'}});
@@ -77,7 +77,7 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(stable(financial(after.daybookTransactionLines))!==stable(financial(before.daybookTransactionLines))||stable(after.attachments)!==stable(before.attachments)||after.daybookTransaction.entryDate!==before.daybookTransaction.entryDate||after.daybookTransaction.description!==before.daybookTransaction.description)throw new Error('Entry or attachments changed during finalization');
  const verified=await posted(read,orgId,after,booking?undefined:ledger.transaction,taxRates);
  if(booking){
- if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
+ if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before,taxRates);}
  return{...after,...verified,reasoning:a.reasoning};
  }
  const bankAfter=await bankSnapshot(read,orgId,bank.bankLine.id);
