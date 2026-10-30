@@ -140,7 +140,7 @@ export class BillyClient {
     let res: Response;
     try {
       res = await fetch(url, {
-        method: 'POST', headers, body: bytes as unknown as BodyInit, signal: this.requestSignal()
+        method: 'POST', headers, body: bytes as unknown as BodyInit, signal: this.requestSignal(), redirect: 'manual'
       });
     } catch (err: any) {
       const cause = err?.cause ? ` (${String(err.cause)})` : '';
