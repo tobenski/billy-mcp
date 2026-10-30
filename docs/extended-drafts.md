@@ -1,6 +1,6 @@
 # Udvidede kladder, fase 1
 
-Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inputskemaer er uændrede; der er 84 værktøjer. 214 automatiske tests består, inklusive additive bilag og første momsudvidelse.
+Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inputskemaer er uændrede; der er 84 værktøjer. 220 automatiske tests består, inklusive additive bilag og første momsudvidelse.
 
 ## Understøttet
 
@@ -45,11 +45,11 @@ Live-test med syntetiske filer: oprettelse med ét bilag; ændring fra 7 til 8 D
 
 `taxRateId` kan nu være en aktiv, prædefineret standardkode `p_dk_25` eller `s_dk_25` fra samme organisation. Satsen skal være 0,25, lokal og have præcis én fuld tax-komponent med share 1 og en aktiv momskonto i organisationen. Koder vælges eksplicit af klienten; MCP udleder ikke momsbehandlingen af kontonavn eller bilag. Kontrol af fradragsret og kontering sker i chatten.
 
-Momslinjer kræver `amountBasis: "gross"`. Beløbet er inklusive moms, sendes uændret og skal sammen med de øvrige bruttolinjer balancere. `net` afvises; MCP beregner hverken momsbeløb eller afrunding. Linjer uden momskode kan blandes med momslinjer. Ingen momskode betyder ikke automatisk en specifik momsfritagelseskode.
+Momslinjer kræver `amountBasis: "gross"`. Beløbet er inklusive moms, sendes uændret og skal sammen med de øvrige bruttolinjer balancere. `net` afvises; kladdeværktøjet omregner ikke beløbene. Bogføringsværktøjet kontrollerer efterfølgende Billys momsopdeling i hele øre. Linjer uden momskode kan blandes med momslinjer. Ingen momskode betyder ikke automatisk en specifik momsfritagelseskode.
 
 Ved redigering valideres både eksisterende og nye momskoder. Headerændringer bevarer momskoder; fuld linjeerstatning kan eksplicit tilføje, ændre eller fjerne dem. Readback kontrollerer taxRateId ud over beløb og øvrige linjefelter. Svar inkluderer de anvendte native momskoder og komponenter som konfigurationsoplysninger, ikke beregnede eller bogførte momsbeløb.
 
-Bogførings-, tilbageførsels- og korrektionsværktøjernes momsbegrænsning er uændret. Denne del dokumenterer lagring af kladder, ikke generering af korrekte finans-/momsposteringer. Det er næste testtrin. EU-moms, omvendt betalingspligt og delvist fradrag afvises.
+Det oprindelige kladdetrin dokumenterede alene lagring. Bogføring og fuld tilbageførsel af standard dansk 25 % moms er siden implementeret og live-testet; se [momsbogføring](vat-booking.md). Rettelser med erstatningslinjer på momsposter er fortsat blokeret. EU-moms, omvendt betalingspligt og delvist fradrag afvises.
 
 Grundlag: [Billys kassekladdevejledning](https://www.billy.dk/support/article/billy-kassekladde/) beskriver inklusive-moms-beløb; [API-dokumentationen](https://www.billy.dk/api/) beskriver taxRate-relationen på daybookTransactionLines. Live-afprøvning af kladder dokumenteres nedenfor.
 
