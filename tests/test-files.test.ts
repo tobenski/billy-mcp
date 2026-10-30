@@ -12,7 +12,7 @@ function harness(options:{org?:string;state?:string;timeout?:boolean;fileSize?:n
   const db:any={prepare(sql:string){return{bind(...a:any[]){return{
     async first(){return rows.get(a[0])??null},async run(){
       if(sql.startsWith('INSERT')) {if(rows.has(a[0])||[...rows.values()].some(x=>x.target===a[2]&&x.state==='pending'))return{success:true,meta:{changes:0}};rows.set(a[0],{fingerprint:a[1],target:a[2],state:'pending',result:null});}
-      else if(sql.startsWith('DELETE'))rows.delete(a[0]);else{const row=rows.get(a[1]);row.state='complete';row.result=a[0];}
+      else if(sql.startsWith('DELETE'))rows.delete(a[0]);else{const row=rows.get(a[1]);if(sql.includes("state = 'complete'"))row.state='complete';row.result=a[0];}
       return{success:true,meta:{changes:1}};
     }
   }}}}};
@@ -87,7 +87,7 @@ function associationHarness(options:{state?:string;sourceOrg?:string;sourceOwner
   const inbox={id:'inbox',organizationId:options.sourceOrg??'org',ownerReference:options.sourceOwner??null,fileId:'inbox-file'};
   const db:any={prepare(sql:string){return{bind(...a:any[]){return{async first(){return rows.get(a[0])??null},async run(){
     if(sql.startsWith('INSERT')){if(rows.has(a[0]))return{success:true,meta:{changes:0}};rows.set(a[0],{fingerprint:a[1],state:'pending',result:null});}
-    else if(sql.startsWith('DELETE'))rows.delete(a[0]);else Object.assign(rows.get(a[1]),{state:'complete',result:a[0]});return{success:true,meta:{changes:1}};
+    else if(sql.startsWith('DELETE'))rows.delete(a[0]);else Object.assign(rows.get(a[1]),{...(sql.includes("state = 'complete'")?{state:'complete'}:{}),result:a[0]});return{success:true,meta:{changes:1}};
   }}}}}};
   const read:any={async get(p:string){
     if(p==='/organization')return{organization:{id:'org'}};
