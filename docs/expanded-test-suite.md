@@ -1,8 +1,8 @@
 # Udvidet Billy-testpakke
 
 Kørt 2026-10-30 i det isolerede testregnskab. Ingen bogføring eller godkendelse.
-111 automatiske tests består; TypeScript og Worker-build består.
-20 integrationsscenarier: 19 bestået live, 1 kendt fejl.
+113 automatiske tests består; TypeScript og Worker-build består.
+20 integrationsscenarier: 20 bestået live med præciseret PNG-kriterium: hent gemt repræsentation og oplys original-match korrekt; byte-identitet kræves ikke for en ændret PNG.
 
 ## Genkørsel
 
@@ -35,7 +35,7 @@ C: midlertidig kopi af A med tydeligt andet testnavn og en genbrugt PDF.
 | 13 | Genbrug samme PDF på A og oprindelig kladde, bevar begge links | Bestået |
 | 14 | Gentag tilknytning med samme og nyt UUID: intet dubletlink | Bestået |
 | 15 | Opret B med 0,10 + 0,20 = 0,30 og tilknyt PNG | Bestået |
-| 16 | Download PNG, sammenlign originale bytes/hash og saml chunks | FEJL: download afvises på ændrede bytes, chunks ikke gennemført |
+| 16 | Download gemt PNG, oplys original-match, saml chunks og kontrollér gemt hash | Bestået efter rettelse: 3.311 bytes, to chunks, korrekt hash; originalMatches=false |
 | 17 | Opret C, tilknyt delt PDF, slet C, gentag sletning; bevar andre links | Bestået; C's link bliver indbakkebilag |
 | 18 | Læs alle kladder med pageSize=2 og datofilter | Bestået: 2+2+1, fem unikke kladder; datofilter giver A+B |
 | 19 | reuse_test_inbox_attachment: behold kilde i indbakke, opret ét link, replay | Bestået live kl. 20.31 dansk tid; inkl. replay |
@@ -52,7 +52,7 @@ Begge er publiceret og live-verificeret 2026-10-30 kl. 20.31 dansk tid efter opd
 ## Fund og resterende arbejde
 
 - Ukendt konto gav tidligere generisk usikker-operation-fejl før POST. Preflight-fejl frigiver nu journalreservationen og siger eksplicit, at der ikke blev skrevet. En lokal regressionstest dækker gentagelse. Den gamle testreservation blev fjernet efter kontrol af kodevejen og nul kladder med operationens apiType. Samme UUID blev genprøvet live: klar afvisning og `not_found` i journalen.
-- PNG upload: 7.026 bytes; Billy-filmetadata: 3.311 bytes; download-hash matcher ikke originalen. Det tyder på billedbehandling i Billy, men årsagen er ikke bevist. Den strenge kontrol er bevaret. Næste ændring bør skelne original upload fra Billys gemte repræsentation og aldrig markere ændrede bytes som originalt verificerede. PDF-download med original SHA-256 består.
+- PNG rettet og live-testet: upload 7.026 bytes, gemt fil 3.311 bytes. Originalens sizeBytes/sha256 bevares; downloadedSizeBytes/downloadedSha256 beskriver de hentede bytes. verified og originalMatches er false ved ændring, representation er billy_stored. PNG-signatur og størrelse mod Billy-metadata kontrolleres. Andre formater kræver fortsat byte-identitet. To chunks blev samlet og SHA-256 kontrolleret lokalt. Testbilledets 640×260 pixels er identiske med den reproducerede original; dette er en konkret fixture-kontrol, ikke en generel garanti om billedlig identitet. PDF-download består fortsat med verified=true. Hashen for den gemte fil er en beregnet kontrolsum, ikke et uafhængigt bevis for originalens integritet.
 - Enkelte kald fik 403 Access denied; efterfølgende sekventielle læsninger lykkedes. Årsagen er ikke isoleret.
 - Sluttilstand: fem kladder, seks tilknyttede bilagsposter og to indbakkeposter (otte tilknytninger, ikke otte forskellige filer). De tre oprindelige kladder og links er bevaret.
 - Momshåndtering, valuta og bogføring ligger uden for denne kladdepakke.
