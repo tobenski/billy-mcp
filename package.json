@@ -50,7 +50,7 @@
     "prepublishOnly": "npm run typecheck && npm run build",
     "dev:worker": "wrangler dev",
     "build:worker": "wrangler deploy --dry-run --outdir dist-worker",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "check:worker": "npm run typecheck && npm test && npm run build:worker",
     "deploy:worker": "wrangler deploy"
   },
