@@ -1,6 +1,6 @@
 # Bogføring og bankgodkendelse, fase 1
 
-Aktuel momsudvidelse: standard dansk 25 % moms kan bogføres og fuldt tilbageføres. Bankafstemning med moms og erstatningsrettelser med moms er fortsat afgrænset fra. Se [kontrakt og live-test](vat-booking.md). De tidligere testforløb nedenfor er historiske.
+Aktuel momsudvidelse: standard dansk 25 % moms kan bogføres og fuldt tilbageføres. Bankafstemning af én bogført momspost er også understøttet; se [momsafstemning](vat-bank-matching.md). Erstatningsrettelser med moms er fortsat afgrænset fra. Se [kontrakt og live-test](vat-booking.md). De tidligere testforløb nedenfor er historiske.
 
 Implementeret 2026-10-30, kun i Test Regnskab API. 138 automatiske tests består. Inputskemaer og værktøjsantal er uændret (82).
 
