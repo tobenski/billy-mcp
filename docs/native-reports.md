@@ -83,3 +83,10 @@ bank lines had no authoritative bank balance; output correctly remained unknown.
 No production reads or writes were needed. No connected live-bank positive test
 or native fiscal-year rollover fixture was available; noncalendar handling is covered
 by automated metadata tests only. Neither is claimed as live-verified.
+
+## Bank-integration preflight added
+
+The same bank balance getter now also returns separately labelled raw integration
+observations and access results. The reconciliation account endpoint is readable;
+the banking accounts endpoint returned403 before a bank connection was installed.
+Connected-bank semantics remain pending. See bank-integration-read-test.md.
