@@ -2,7 +2,7 @@
 
 Kørt 2026-10-30 i det isolerede testregnskab. Ingen bogføring eller godkendelse.
 111 automatiske tests består; TypeScript og Worker-build består.
-20 integrationsscenarier: 17 bestået live, 1 kendt fejl, 2 afventer live-kald.
+20 integrationsscenarier: 19 bestået live, 1 kendt fejl.
 
 ## Genkørsel
 
@@ -38,8 +38,8 @@ C: midlertidig kopi af A med tydeligt andet testnavn og en genbrugt PDF.
 | 16 | Download PNG, sammenlign originale bytes/hash og saml chunks | FEJL: download afvises på ændrede bytes, chunks ikke gennemført |
 | 17 | Opret C, tilknyt delt PDF, slet C, gentag sletning; bevar andre links | Bestået; C's link bliver indbakkebilag |
 | 18 | Læs alle kladder med pageSize=2 og datofilter | Bestået: 2+2+1, fem unikke kladder; datofilter giver A+B |
-| 19 | reuse_test_inbox_attachment: behold kilde i indbakke, opret ét link, replay | Lokale tests består; live afventer opdateret værktøjsliste |
-| 20 | remove_test_draft_attachment: fjern kun valgt link, behold fil/andre links, replay | Lokale tests består; live afventer opdateret værktøjsliste |
+| 19 | reuse_test_inbox_attachment: behold kilde i indbakke, opret ét link, replay | Bestået live kl. 20.31 dansk tid; inkl. replay |
+| 20 | remove_test_draft_attachment: fjern kun valgt link, behold fil/andre links, replay | Bestået live kl. 20.31 dansk tid; inkl. replay |
 
 ## Nye funktioner
 
@@ -47,7 +47,7 @@ C: midlertidig kopi af A med tydeligt andet testnavn og en genbrugt PDF.
 
 `remove_test_draft_attachment` tager samme felter. Den sletter kun en specifik tilknytning på en kladde oprettet med testværktøjerne. Den kontrollerer bagefter filens eksistens og bevaring af andre links. Den opretter ikke en ny indbakkepost.
 
-Begge er publiceret på testserveren. Denne samtales værktøjsliste indeholder endnu ikke deres skemaer, så de må ikke regnes som live-verificerede. Opdatér appforbindelsens værktøjsliste og gennemfør scenarie 19-20. Brug et ekstra link til A til fjernelsestesten, ikke et af de tre oprindelige baseline-links.
+Begge er publiceret og live-verificeret 2026-10-30 kl. 20.31 dansk tid efter opdatering af appforbindelsen. Et eksisterende indbakkebilag blev genbrugt på A; kilden og de to eksisterende links blev bevaret. Gentagelse med samme UUID gav replay, og nyt UUID genbrugte det eksisterende link uden dublet. Det nyoprettede link blev derefter fjernet, mens filen og øvrige links blev bevaret. Gentagen fjernelse med samme UUID gav replay. Slutkontrollen af alle otte bilagsposter var identisk med kontrollen før testen (ID, fil, ejer og øvrige returnerede metadata).
 
 ## Fund og resterende arbejde
 
