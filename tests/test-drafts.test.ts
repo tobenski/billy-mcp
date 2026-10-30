@@ -35,7 +35,7 @@ async function rpc(db:JournalDB, name:string, args:any, method='tools/call') {
 const input = {operationId:key, entryDate:'2026-10-30',daybookId:'daybook',description:'Synthetic test', lines:[
   {accountId:'expense',amount:100,side:'debit'}, {accountId:'bank',amount:100,side:'credit'},
 ]};
-function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;foreignAccount?:boolean}={}) {
+function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;foreignAccount?:boolean;missingAccount?:boolean}={}) {
   const writes:any[]=[]; let row:any; let deleted=false;
   t.mock.method(globalThis,'fetch',async (input:any,init:any)=>{
     const url=new URL(String(input)); const p=url.pathname.replace('/v2','');
@@ -49,6 +49,7 @@ function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;for
     }
     if(p==='/organization') return Response.json({organization:{id:options.org??orgId,baseCurrencyId:'DKK'}});
     if(p==='/daybooks') return Response.json({daybooks:[{id:'daybook'}]});
+    if(p.startsWith('/accounts/') && options.missingAccount) return Response.json({error:'missing'}, {status:404});
     if(p.startsWith('/accounts/')) return Response.json({account:{id:p.split('/').pop(),organizationId:options.foreignAccount?'foreign':orgId,currencyId:'DKK',isArchived:false}});
     if(p==='/daybookTransactionLines') return Response.json({daybookTransactionLines:row?.lines??[]});
     if(p==='/daybookTransactions/draft') return Response.json({daybookTransaction:{...(row??{id:'draft',organizationId:orgId,state:options.state??'draft',apiType:'mcp-test:'+key,description:'Synthetic test'})}});
@@ -59,8 +60,8 @@ function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;for
 test('write-enabled registry adds narrow draft and attachment tools',async t=>{
   const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('No network')});
   const result=await rpc(journal(),'',{},'tools/list');
-  assert.equal(result.result.tools.length,59);
-  assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false).map((x:any)=>x.name).sort(),['attach_test_file_to_draft','create_test_daybook_draft','delete_test_daybook_draft','update_test_daybook_draft','upload_test_file']);
+  assert.equal(result.result.tools.length,61);
+  assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false).map((x:any)=>x.name).sort(),['attach_test_file_to_draft','create_test_daybook_draft','delete_test_daybook_draft','remove_test_draft_attachment','reuse_test_inbox_attachment','update_test_daybook_draft','upload_test_file']);
   assert.equal(calls.mock.callCount(),0);
 });
 test('full draft create, replay, update, delete cycle uses draft state and returns source lines',async t=>{
@@ -124,3 +125,10 @@ test('missing journal fails closed when writes enabled',async()=>{
   const retry=await rpc(db,'update_test_daybook_draft',{operationId:key2,id:'draft',expectedDescription:'Synthetic test',description:'new'});
   assert.notEqual(retry.result.isError,true,JSON.stringify(retry));assert.equal(state.writes.length,1);
  });
+
+test('failed account preflight releases journal with no mutation',async t=>{
+ const state=upstream(t,{missingAccount:true}),db=journal();
+ for(let n=0;n<2;n++){const r=await rpc(db,'create_test_daybook_draft',input);assert.equal(r.result.isError,true);assert.match(r.result.content[0].text,/No write performed/);}
+ assert.equal(state.writes.length,0);
+ const r=await rpc(db,'get_test_write_operation',{operationId:key});assert.match(r.result.content[0].text,/not_found/);
+});
