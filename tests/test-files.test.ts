@@ -73,3 +73,10 @@ test('binary upload sends exact bytes and organization with no redirects',async 
   t.mock.method(globalThis,'fetch',async(input,init)=>{assert.equal(String(input),'https://api.billysbilling.com/v2/files');assert.equal(init?.redirect,'manual');assert.equal(new Headers(init?.headers).get('x-organizationid'),'org');assert.deepEqual(Buffer.from(init?.body as Uint8Array),pdf);return Response.json({files:[{id:'file'}]});});
   await new BillyClient({accessToken:'synthetic'}).postBinary('/files',pdf,{fileName:'test.pdf',contentType:'application/pdf',organizationId:'org'});
 });
+
+test('observed Billy EU S3 bucket is allowed; other S3 buckets are blocked',async t=>{
+  const calls=t.mock.method(globalThis,'fetch',async()=>new Response(pdf));
+  assert.deepEqual(Buffer.from(await downloadBytes('https://billysbilling-eu.s3.eu-north-1.amazonaws.com/test.pdf')),pdf);
+  await assert.rejects(downloadBytes('https://another-bucket.s3.eu-north-1.amazonaws.com/test.pdf'));
+  assert.equal(calls.mock.callCount(),1);
+});
