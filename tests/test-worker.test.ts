@@ -27,7 +27,7 @@ test('test deployment exposes all 51 original read schemas plus the test identit
   const text = await original.text();
   const message = original.headers.get('Content-Type')?.includes('text/event-stream')
     ? JSON.parse(text.split('\n').find(line => line.startsWith('data:'))!.slice(5)) : JSON.parse(text);
-  assert.equal(result.result.tools.length, 74);
+  assert.equal(result.result.tools.length, 75);
   assert.equal(message.result.tools.length, 51);
   assert.deepEqual(result.result.tools.filter((tool: any) => message.result.tools.some((original:any)=>original.name===tool.name)), message.result.tools);
   for (const name of ['create_daybook_transaction', 'execute_script', 'upload_file', 'get_account_balances']) {
