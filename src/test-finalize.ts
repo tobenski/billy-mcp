@@ -14,7 +14,7 @@ export function validate(snapshot:any,state:string,allowVat=false,allowFx=false)
  if(h.state!==state||!h.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Expected a test-tool-created '+state+' entry');
  if(snapshot.daybookTransactionLines.length<2||snapshot.daybookTransactionLines.length>50)throw new NoWriteError('Expected 2 to 50 lines');
  const fx=snapshot.daybookTransactionLines.some((l:any)=>l.currencyId==='EUR');
- if(fx&&(!allowFx||snapshot.daybookTransactionLines.some((l:any)=>l.taxRateId)))throw new NoWriteError('EUR requires explicit base amounts and no VAT; bank matching is not supported');
+ if(fx&&!allowFx)throw new NoWriteError('EUR requires explicit base amounts; bank matching is not supported');
  let balance=0;for(const l of snapshot.daybookTransactionLines){id.parse(l.accountId);if(!['DKK',...(allowFx?['EUR']:[])].includes(l.currencyId)||(!allowVat&&l.taxRateId)||l.contraTaxRateId||l.contraAccountId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['debit','credit'].includes(l.side))throw new NoWriteError('Only DKK without tax or linked payments supported');money(l.amount);if(l.currencyId==='DKK'&&l.baseAmount!=null&&l.baseAmount!==l.amount)throw new NoWriteError('Invalid DKK base amount');balance+=money(l.currencyId==='EUR'?l.baseAmount:l.amount)*(l.side==='debit'?1:-1);}if(balance!==0)throw new NoWriteError('Unbalanced entry');
 }
 export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTransaction?:any,taxRates?:any[]){
@@ -26,10 +26,16 @@ export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTra
  const postings=await read.fetchAll('/postings','postings',{organizationId:orgId,transactionId:transaction.id});
  if(postings.some((p:any)=>p.transactionId!==transaction.id||p.organizationId!==orgId||p.isVoided||p.entryDate!==snapshot.daybookTransaction.entryDate))throw new Error('Native posting ownership/date mismatch');
  if(snapshot.daybookTransactionLines.some((l:any)=>l.currencyId==='EUR')){
- validate(snapshot,'approved',false,true);
- const expected=snapshot.daybookTransactionLines.map((l:any)=>({...l,amount:l.currencyId==='EUR'?l.baseAmount:l.amount,currencyId:'DKK'}));
+ validate(snapshot,'approved',true,true);
+ const expected=snapshot.daybookTransactionLines.map((l:any)=>({...l,amount:l.currencyId==='EUR'?l.baseAmount:l.amount,currencyId:'DKK',baseAmount:undefined}));
+ if(snapshot.daybookTransactionLines.some((l:any)=>l.taxRateId)){
+ const rates=taxRates??await standardVatRates(read,orgId,snapshot.daybookTransactionLines);
+ if(rates.some(r=>!['p_dk_25','s_dk_25'].includes(r.predefinedTag)))throw new Error('Unsupported EUR VAT code');
+ verifyVatPostings(expected,postings,rates);
+ }else {
  if(postings.some((p:any)=>p.currencyId!=='DKK'||money(p.baseAmount)!==money(p.amount)||p.exchangeRate!==1||p.salesTaxReturnId!=null))throw new Error('Unexpected native EUR conversion on DKK accounts');
  if(stable(financial(postings))!==stable(financial(expected)))throw new Error('Native DKK postings differ from explicit EUR base amounts');
+ }
  }else if(snapshot.daybookTransactionLines.some((l:any)=>l.taxRateId)){
  const rates=taxRates??await standardVatRates(read,orgId,snapshot.daybookTransactionLines);
  verifyVatPostings(snapshot.daybookTransactionLines,postings,rates);
@@ -37,7 +43,7 @@ export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTra
  return{transaction,postings};
 }
 export const finalizeDescriptions:Record<string,string>={
- book_test_daybook_draft:'EUR phase: explicitly supplied EUR/DKK amounts without VAT; preserves source EUR/baseAmount; verifies native DKK postings on DKK accounts. No FX bank matching. Phase 1: explicitly book a test-tool-created balanced DKK draft with no VAT or supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes or EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping. Verifies native net/tax split in integer cents; Single-entry standard VAT bank matching is supported. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
+ book_test_daybook_draft:'EUR phase: explicitly supplied gross EUR/DKK amounts with ordinary Danish K/S VAT or no VAT; preserves source EUR/baseAmount; verifies native DKK postings on DKK accounts. No FX bank matching. Phase 1: explicitly book a test-tool-created balanced DKK draft with no VAT or supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes or EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping. Verifies native net/tax split in integer cents; Single-entry standard VAT bank matching is supported. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
  approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against a booked test entry (including supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes or EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping) or a VAT-free original/correction pair with 2-3 complete bank posting associations and an exact signed net. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
 };
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
