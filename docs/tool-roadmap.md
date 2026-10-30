@@ -1,8 +1,10 @@
 # Billy-værktøjer, kontrakt v1
 
-Aktuel samlet vurdering og prioritering: [Status mod Numina](capability-audit-2026-10-30.md).
+Historisk vurdering før rapportpakken: [Status mod Numina](capability-audit-2026-10-30.md).
 
-4 stubs, 18 implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 84 værktøjer. Produktionsserveren er uændret.
+1 stub, 21 implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 84 værktøjer. Produktionsserveren er uændret.
+
+Rapportpakken er siden implementeret: [native rapporter og bogførte banksaldi](native-reports.md). Bankens indberettede saldo og synkronisering er fortsat ukendt.
 
 Alle stubs returnerer isError=true og NOT_IMPLEMENTED uden API-kald, journalreservation eller regnskabsændring. Skriveværktøjer er markeret som skrivende efter deres tilsigtede funktion, selv om stubs ikke skriver. Ingen status skifter automatisk til aktiv.
 
@@ -71,7 +73,7 @@ create_test_extended_draft og update_test_extended_draft er nu implementeret for
 
 Read native account movement/opening/closing report values; no MCP aggregation.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se native-reports.md. Banksaldodækningen er begrænset til bogført saldo og native banklinjeobservationer.
 
 ```json
 {
@@ -117,7 +119,7 @@ Status: reserved; API: unverified.
 
 Read native trial balance as of a date, excluding drafts.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se native-reports.md. Banksaldodækningen er begrænset til bogført saldo og native banklinjeobservationer.
 
 ```json
 {
@@ -140,7 +142,7 @@ Status: reserved; API: unverified.
 
 Read stored bank balances, currency and synchronization timestamps; never imply real-time funds.
 
-Status: reserved; API: unverified.
+Status: implemented_phase1; se native-reports.md. Banksaldodækningen er begrænset til bogført saldo og native banklinjeobservationer.
 
 ```json
 {
