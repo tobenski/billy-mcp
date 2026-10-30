@@ -4,13 +4,13 @@ import {draftSnapshot} from '../src/test-extended-drafts.js';
 const key='11111111-1111-4111-8111-111111111111';
 const oldLines=[{id:'one',daybookTransactionId:'source',accountId:'cost',amount:100,side:'debit',currencyId:'DKK',text:'Old'},{id:'two',daybookTransactionId:'source',accountId:'bank',amount:100,side:'credit',currencyId:'DKK',text:'Old'}];
 function harness(options:any={}){
- let writes=0;const rows=new Map<string,any>();let correction:any=null,newLines:any[]=[];const links:any[]=[];
+ let writes=0,reads=0;const rows=new Map<string,any>();let correction:any=null,newLines:any[]=[];const links:any[]=[];
  const original={id:'source',organizationId:'org',apiType:'mcp-test:original',state:'approved',daybookId:'book',entryDate:'2026-10-01',description:'Original'};
  const tx={id:'tx',organizationId:'org',originatorReference:'daybookTransaction:source',entryDate:'2026-10-01',isVoid:false,isVoided:false};
- const read:any={async get(p:string){if(p==='/organization')return{organization:{id:'org',baseCurrencyId:'DKK'}};if(p==='/transactions/tx')return{transaction:tx};if(p==='/daybookTransactions/source')return{daybookTransaction:{...original}};if(p==='/daybookTransactions/correction')return{daybookTransaction:{...correction}};if(p.startsWith('/accounts/'))return{account:{organizationId:'org',currencyId:'DKK',isArchived:options.archived??false}};throw Error(p);},async fetchAll(p:string,r:string,q:any){if(p==='/transactions')return[tx];if(p==='/postings')return oldLines.map(l=>({...l,id:'p'+l.id,organizationId:'org',transactionId:'tx',entryDate:'2026-10-01',isVoided:false,isBankMatched:options.matched??false}));if(p==='/daybookTransactionLines')return structuredClone(q.daybookTransactionId==='source'?oldLines:newLines);if(p==='/attachments')return q.ownerReference==='daybookTransaction:source'?[{id:'att',ownerReference:q.ownerReference,fileId:'file'}]:structuredClone(links);if(p==='/daybookTransactions')return correction?[{...correction}]:[];throw Error(p);}};
+ const read:any={async get(p:string){reads++;if(p==='/bankLines/bl')return{bankLine:{id:'bl',accountId:'bank',matchId:'match',amount:100,side:'credit'}};if(p==='/bankLineMatches/match')return{bankLineMatch:{id:'match',accountId:'bank',amount:100,side:'credit',isApproved:options.approved??true}};if(p==='/organization')return{organization:{id:'org',baseCurrencyId:'DKK'}};if(p==='/transactions/tx')return{transaction:tx};if(p==='/daybookTransactions/source')return{daybookTransaction:{...original}};if(p==='/daybookTransactions/correction')return{daybookTransaction:{...correction}};if(p.startsWith('/accounts/'))return{account:{id:p.split('/').pop(),organizationId:'org',currencyId:'DKK',isBankAccount:p==='/accounts/bank'||p==='/accounts/bank2',isArchived:options.archived??false}};throw Error(p);},async fetchAll(p:string,r:string,q:any){reads++;if(p==='/bankLineSubjectAssociations')return[{id:'assoc',matchId:'match',subjectReference:options.badAssociation?'posting:other':'posting:ptwo'}];if(p==='/bankLines')return q.status==='pending'?[]:[{id:'bl',accountId:'bank',matchId:'match',amount:100,side:'credit'}];if(p==='/transactions')return[tx];if(p==='/postings')return oldLines.map(l=>({...l,id:'p'+l.id,organizationId:'org',transactionId:'tx',entryDate:'2026-10-01',isVoided:false,isBankMatched:options.bankMatched?l.accountId==='bank':options.matched??false}));if(p==='/daybookTransactionLines')return structuredClone(q.daybookTransactionId==='source'?oldLines:newLines);if(p==='/attachments')return q.ownerReference==='daybookTransaction:source'?[{id:'att',ownerReference:q.ownerReference,fileId:'file'}]:structuredClone(links);if(p==='/daybookTransactions')return correction?[{...correction}]:[];throw Error(p);}};
  const db:any={prepare(sql:string){return{bind(...a:any[]){return{async first(){if(sql.includes('json_extract'))return[...rows.values()].find(row=>row.state==='complete'&&JSON.parse(row.result).correctionDraft?.daybookTransaction.id===a[1])??null;return rows.get(a[0])??null;},async run(){if(sql.startsWith('INSERT')){if(rows.has(a[0]))return{success:true,meta:{changes:0}};rows.set(a[0],{fingerprint:a[1],state:'pending',result:null});}else if(sql.startsWith('DELETE'))rows.delete(a[0]);else Object.assign(rows.get(a[1]),{state:'complete',result:a[0]});return{success:true,meta:{changes:1}};}};}};}};
  const write:any={async post(p:string,b:any){writes++;if(p==='/daybookTransactions'){correction={...b.daybookTransaction,id:'correction'};newLines=correction.lines.map((l:any,i:number)=>({...l,id:'n'+i,daybookTransactionId:'correction'}));delete correction.lines;return{daybookTransactions:[correction]};}if(options.fileTimeout)throw Error('Lost response');links.push({id:'newatt',...b.attachment});return{attachments:links};}};
- return{call:(name:string,a:any)=>correctionHandler(read,write,db,'org',name)(a),source:()=>correctionSource(read,'org','tx'),snapshot:()=>draftSnapshot(read,'correction','org'),verify:(d:any)=>verifyCorrection(read,db,'org',d),writes:()=>writes,original};
+ return{call:(name:string,a:any)=>correctionHandler(read,write,db,'org',name)(a),source:()=>correctionSource(read,'org','tx'),snapshot:()=>draftSnapshot(read,'correction','org'),verify:(d:any)=>verifyCorrection(read,db,'org',d),writes:()=>writes,reads:()=>reads,original};
 }
 const input=(revision:string)=>({operationId:key,transactionId:'tx',expectedRevision:revision,entryDate:'2026-10-02',description:'Correction',reasoning:'Test',lines:[{accountId:'other',amount:120,side:'debit',text:'New'},{accountId:'bank',amount:120,side:'credit',text:'New'}]});
 const data=(r:any)=>JSON.parse(r.content[0].text);
@@ -25,3 +25,30 @@ test('bankmatched, stale, invalid date/amount and archived accounts reject witho
 });
 test('changed proposal/source cannot be booked; absent provenance blocks booking',async()=>{const h=harness();await h.call('propose_test_booked_change',input((await h.source()).revision));const d=await h.snapshot();await assert.rejects(h.verify({...d,revision:'changed'}));h.original.description='changed';await assert.rejects(h.verify(d));await assert.rejects(h.verify({...d,daybookTransaction:{id:'unknown'}}));});
 test('failed attachment copy keeps pending and blocks duplicate draft creation',async()=>{const h=harness({fileTimeout:true}),a=input((await h.source()).revision);assert.equal((await h.call('propose_test_booked_change',a)).isError,true);assert.equal((await h.call('propose_test_booked_change',a)).isError,true);assert.equal(h.writes(),2);});
+
+test('matched source reclassifies non-bank lines only and preserves approved match',async()=>{
+ const h=harness({bankMatched:true}),s=await h.source();
+ const a=input(s.revision);a.lines=a.lines.map(l=>({...l,amount:100}));
+ const r=await h.call('propose_test_booked_change',a);assert.notEqual(r.isError,true,JSON.stringify(r));
+ const d=data(r).result;assert.equal(d.kind,'non_bank_reclassification');assert.equal(d.bankMatchPreserved,true);
+ assert.deepEqual(d.correctionDraft.daybookTransactionLines.map((l:any)=>[l.accountId,l.side,l.amount]),[['cost','credit',100],['other','debit',100]]);
+ assert.equal(d.correctionDraft.attachments.length,1);assert.equal((await h.source()).revision,s.revision);
+ await h.verify(await h.snapshot());assert.equal(data(await h.call('propose_test_booked_change',a)).replayed,true);
+});
+test('matched source rejects amount, bank account, direction, extra bank legs and reversal',async()=>{
+ const h=harness({bankMatched:true}),a=input((await h.source()).revision);
+ const variations=[a.lines,a.lines.map(l=>({...l,amount:100,accountId:l.accountId==='bank'?'bank2':l.accountId})),a.lines.map(l=>({...l,amount:100,side:l.side==='debit'?'credit':'debit'})),[{accountId:'other',amount:100,side:'debit',text:'x'},{accountId:'bank',amount:50,side:'credit',text:'x'},{accountId:'bank',amount:50,side:'credit',text:'x'}]];
+ for(const lines of variations){const r=await h.call('propose_test_booked_change',{...a,lines});assert.equal(r.isError,true);assert.match(r.content[0].text,/BANK_MATCH_PRESERVED/);}
+ assert.equal((await h.call('propose_test_reversal',a)).isError,true);assert.equal(h.writes(),0);
+});
+test('matched proposal refuses booking after bank approval changes',async()=>{
+ const options={bankMatched:true,approved:true},h=harness(options),a=input((await h.source()).revision);a.lines=a.lines.map(l=>({...l,amount:100}));
+ assert.notEqual((await h.call('propose_test_booked_change',a)).isError,true);options.approved=false;await assert.rejects(h.verify(await h.snapshot()));
+});
+test('unapproved or mismatched bank evidence fails closed',async()=>{
+ for(const options of [{bankMatched:true,approved:false},{bankMatched:true,badAssociation:true}]){const h=harness(options);await assert.rejects(h.source());assert.equal(h.writes(),0);}
+});
+
+test('matched source evidence uses at most 14 upstream reads for the one-page fixture',async()=>{
+ const h=harness({bankMatched:true});await h.source();assert.ok(h.reads()<=14,`source reads: ${h.reads()}`);
+});
