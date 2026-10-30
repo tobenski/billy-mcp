@@ -66,7 +66,7 @@ create_test_review og resolve_test_review er live-verificeret på både bilag og
 
 ## Kontrakter
 
-create_test_extended_draft og update_test_extended_draft er nu implementeret for DKK uden moms eller valgfrie tilknytninger. get_daybook_transaction returnerer revision i testskrivemodus. Se [fase 1 og live-test](extended-drafts.md). Inputskemaerne nedenfor er bevaret; ikke-understøttede felter afvises.
+create_test_extended_draft og update_test_extended_draft understøtter DKK, standard dansk 25 % moms med eksplicitte bruttobeløb og additive bilagstilknytninger. get_daybook_transaction returnerer revision i testskrivemodus. Se [fase 1 og live-test](extended-drafts.md). Inputskemaerne nedenfor er bevaret; ikke-understøttede felter afvises.
 
 
 ### get_test_account_balances
@@ -1542,3 +1542,5 @@ Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen fo
   "additionalProperties": false
 }
 ```
+
+Momsudvidelse: book_test_daybook_draft understøtter standard dansk 25 % moms; propose_test_reversal bevarer bruttolinjer og momskoder. Bankafstemning og erstatningsrettelser med moms er fortsat blokeret. Se [momsbogføring og live-test](vat-booking.md).
