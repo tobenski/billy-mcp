@@ -16,7 +16,7 @@ function journal() {
         if (rows.has(a[0]) || [...rows.values()].some(r => r.target === a[2] && r.state === 'pending')) return {success:true,meta:{changes:0}};
         rows.set(a[0], {fingerprint:a[1],target:a[2],state:'pending',result:null});
       } else if (sql.startsWith('DELETE')) { rows.delete(a[0]);
-      } else { const row=rows.get(a[1]); if (!row) return {success:true,meta:{changes:0}}; row.state='complete'; row.result=a[0]; }
+      } else { const row=rows.get(a[1]); if (!row) return {success:true,meta:{changes:0}}; if(sql.includes("state = 'complete'"))row.state='complete'; row.result=a[0]; }
       return {success:true,meta:{changes:1}};
     }
   }; } }; } };
@@ -132,4 +132,16 @@ test('failed account preflight releases journal with no mutation',async t=>{
  for(let n=0;n<2;n++){const r=await rpc(db,'create_test_daybook_draft',input);assert.equal(r.result.isError,true);assert.match(r.result.content[0].text,/No write performed/);}
  assert.equal(state.writes.length,0);
  const r=await rpc(db,'get_test_write_operation',{operationId:key});assert.match(r.result.content[0].text,/not_found/);
+});
+
+test('uncertain native failures retain safe diagnostics and block replay without exposing response text',async()=>{
+ for(const message of ['Billy API POST /taxRates failed with 403: SECRET customer data','Billy API PUT /daybookTransactions/private-id network error: SECRET URL','SECRET unexpected verification detail']){
+ const db=journal();let calls=0;const action=async()=>{calls++;throw Error(message);};
+ await assert.rejects(journalRun(db,orgId,key,'target',{action:'test'},action));
+ const row:any=await db.prepare('SELECT fingerprint, state, result FROM operations WHERE id = ?').bind(orgId+':'+key).first();
+ assert.equal(row.state,'pending');assert.ok(!row.result.includes('SECRET'));assert.ok(!row.result.includes('private-id'));
+ const d=JSON.parse(row.result).diagnostic;assert.equal(d.safeToRetry,false);assert.equal(d.outcome,'undetermined');
+ if(message.includes('403')){assert.equal(d.httpStatus,403);assert.equal(d.resource,'taxRates');assert.equal(d.method,'POST');}
+ await assert.rejects(journalRun(db,orgId,key,'target',{action:'test'},action));assert.equal(calls,1);
+ }
 });
