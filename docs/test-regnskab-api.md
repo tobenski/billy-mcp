@@ -32,12 +32,36 @@ Kør `npm run check:worker`. Det omfatter typecheck, tests og en build uden depl
 secret ved deployment; kopier aldrig BIF-nøglen eller produktionsbindings.
 Automatisk Git-build skal i givet fald kobles til denne branch og denne Worker.
 
-## Næste trin
+## Kladdefunktioner (valgfri aktivering)
 
-Opdatér værktøjslisten i ChatGPT og bekræft repræsentative læsekald. Udvid derefter med
-én skrivefunktion ad gangen, først kladdeoprettelse. Ingen skriveværktøjer,
-raw API-skrivning eller scripts eksponeres i dette trin. Alle kommende operationer
-skal kontrollere tokenets regnskabs-ID før adgang; både positive og negative
-tests skal dække denne kontrol. En test sammenligner samtlige 51 læseværktøjers
-schemas direkte med den oprindelige server og kontrollerer fravær af skriveværktøjer.
+`BILLY_TEST_DRAFT_WRITES=enabled` og D1-binding `TEST_WRITE_JOURNAL` aktiverer
+fire ekstra værktøjer: `create_test_daybook_draft`, `update_test_daybook_draft`,
+`delete_test_daybook_draft` og `get_test_write_operation`. I alt 56 værktøjer.
+Uden aktiveringen er de oprindelige 52 tilgængelige. Manglende journal ved
+aktivering afviser alle kald. Kør `migrations/0001_test_write_journal.sql` først.
+Bevar runtime-bindings ved deployment; database-ID og regnskabs-ID er ikke kildekode.
+
+Oprettelse kræver balancerede linjer, gyldig dato, eksplicit kassekladde og
+konti fra testregnskabet. Første trin understøtter regnskabets basisvaluta,
+positive beløb med højst to decimaler og ingen momskoder eller modkontogenveje.
+Der oprettes altid draft. Genlæsning returnerer hoved og alle linjer.
+Rettelser omfatter beskrivelse, udvidet beskrivelse og bilagsnummer. Dato, beløb
+og konti er dokumenteret immutable i Billy API og ændres ikke. Sletning og
+rettelser kræver draft, korrekt organisation og værktøjets `mcp-test:`-mærke.
+Ingen endelig bogføring, tilbageførsel, bilagsupload eller bankafstemning er aktiveret.
+
+Hvert skrivekald skal have et nyt UUID `operationId`; et genforsøg skal bruge
+præcis samme UUID og input. D1 reserverer UUID før skrivning og gemmer resultatet.
+Et gentaget afsluttet kald returnerer det gemte resultat (ikke en ny live-læsning).
+Samme UUID med andre data afvises. En unik databaseindeks-lås blokerer samtidige
+ændringer af samme kladde. Et timeout eller en fejl efter mulig skrivning beholder
+status pending og blokerer genforsøg. `get_test_write_operation` viser input
+og status. Pending er ikke bevis for, at Billy intet har gemt. Undersøg Billy
+via apiType `mcp-test:<operationId>` og læseværktøjerne; opret aldrig bare et nyt
+UUID for at omgå en uafklaret handling. Manuel afklaring af journalen kræves
+ved uafklaret udfald. Der findes endnu ikke et automatisk afklaringsværktøj.
+
+De lokale tests bruger syntetiske Billy-svar. Live-test skal efter opdatering
+af MCP-værktøjslisten udføre create → read → update → read → delete → list
+samt gentagelse med samme UUID. Registrer live-resultatet separat.
 Analyse og konteringsvurderinger forbliver i chatten.
