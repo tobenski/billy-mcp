@@ -56,11 +56,11 @@ function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;for
   });
   return {writes,isDeleted:()=>deleted};
 }
-test('write-enabled registry adds exactly three narrow writes and operation lookup',async t=>{
+test('write-enabled registry adds narrow draft and attachment tools',async t=>{
   const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('No network')});
   const result=await rpc(journal(),'',{},'tools/list');
-  assert.equal(result.result.tools.length,56);
-  assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false).map((x:any)=>x.name).sort(),['create_test_daybook_draft','delete_test_daybook_draft','update_test_daybook_draft']);
+  assert.equal(result.result.tools.length,59);
+  assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false).map((x:any)=>x.name).sort(),['attach_test_file_to_draft','create_test_daybook_draft','delete_test_daybook_draft','update_test_daybook_draft','upload_test_file']);
   assert.equal(calls.mock.callCount(),0);
 });
 test('full draft create, replay, update, delete cycle uses draft state and returns source lines',async t=>{
