@@ -151,3 +151,9 @@ returned the historical result and left the newly approved group approved.
 unapproved unlink, incomplete groups, stale revisions, single-post protection,
 pending reopen/delete failures, replay after reapproval and request-budget checks.
 Only the isolated test Worker was deployed; existing schemas/tool count are unchanged.
+
+## Inspecting interrupted operations
+
+The existing operation getter now includes fresh bank evidence separately from its
+historical journal result. See [operation inspection](operation-inspection.md).
+This helps inspect partial writes but never clears a pending lock or retries them.
