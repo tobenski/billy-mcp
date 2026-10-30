@@ -1,5 +1,7 @@
 # Bankafstemning af bogførte momsposter
 
+Aktuel EU-udvidelse: køb af varer og ydelser i EU med fuldt fradrag understøttes nu i DKK. Se [kontrakt, momsrapport og live-test](eu-purchase-vat.md). De oprindelige afgrænsninger nedenfor er historiske for første version.
+
 Implementeret og live-testet 2026-10-30. 222 automatiske tests består. Eksisterende værktøjsnavne og inputskemaer er uændrede.
 
 ## Understøttet forløb
