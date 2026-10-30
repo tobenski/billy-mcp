@@ -4,6 +4,7 @@ import { BillyClient } from './billy-client.js';
 import { hasAllowedOrigin, isAllowed, type AccessContext } from './worker-auth.js';
 import { registerTestDraftTools, type JournalDB } from './test-drafts.js';
 import { registerTestFileTools } from './test-files.js';
+import { correctionHandler, transactionWithRevision } from './test-corrections.js';
 import { finalizeHandler } from './test-finalize.js';
 import { bankHandler } from './test-bank.js';
 import { documentHandler } from './test-documents.js';
@@ -78,10 +79,10 @@ function createTestServer(billy: BillyClient, expectedId: string, write?: BillyC
     registerTestDraftTools(server, billy, write, db, expectedId);
     registerTestFileTools(server, billy, write, db, expectedId);
   }
-  registerRoadmapTools(server, Boolean(write && db),{...(write&&db?Object.fromEntries(['book_test_daybook_draft','approve_test_bank_match'].map(name=>[name,finalizeHandler(billy,write,db,expectedId,name)])):{}),...Object.fromEntries(['get_test_bank_line',...(write&&db?['reconcile_test_bank_line','unlink_test_bank_line']:[])].map(name=>[name,bankHandler(billy,expectedId,name,write,db)])),...Object.fromEntries(['get_test_document','search_test_documents'].map(name=>[name,documentHandler(billy,expectedId,name)])),...(write&&db?Object.fromEntries(['create_test_extended_draft','update_test_extended_draft'].map(name=>[name,extendedHandler(billy,write,db,expectedId,name)])):{})});
+  registerRoadmapTools(server, Boolean(write && db),{...(write&&db?Object.fromEntries(['propose_test_booked_change','propose_test_reversal'].map(name=>[name,correctionHandler(billy,write,db,expectedId,name)])):{}),...(write&&db?Object.fromEntries(['book_test_daybook_draft','approve_test_bank_match'].map(name=>[name,finalizeHandler(billy,write,db,expectedId,name)])):{}),...Object.fromEntries(['get_test_bank_line',...(write&&db?['reconcile_test_bank_line','unlink_test_bank_line']:[])].map(name=>[name,bankHandler(billy,expectedId,name,write,db)])),...Object.fromEntries(['get_test_document','search_test_documents'].map(name=>[name,documentHandler(billy,expectedId,name)])),...(write&&db?Object.fromEntries(['create_test_extended_draft','update_test_extended_draft'].map(name=>[name,extendedHandler(billy,write,db,expectedId,name)])):{})});
   if(write&&db){
     const register=server.registerTool.bind(server);
-    server.registerTool=((name:any,config:any,handler:any)=>name==='get_daybook_transaction'?register(name,{...config,description:config.description+' In test-write mode also returns all lines, attachments and an optimistic revision for extended updates.'},async({id}:any)=>{try{return jsonResult(await draftSnapshot(billy,id,expectedId));}catch(e){return errorResult(e);}}):register(name,config,handler)) as typeof server.registerTool;
+    server.registerTool=((name:any,config:any,handler:any)=>name==='get_transaction'?register(name,{...config,description:config.description+' Returns correction eligibility and revision for eligible test entries.'},async({id}:any)=>{try{return jsonResult(await transactionWithRevision(billy,expectedId,id));}catch(e){return errorResult(e);}}):name==='get_daybook_transaction'?register(name,{...config,description:config.description+' In test-write mode also returns all lines, attachments and an optimistic revision for extended updates.'},async({id}:any)=>{try{return jsonResult(await draftSnapshot(billy,id,expectedId));}catch(e){return errorResult(e);}}):register(name,config,handler)) as typeof server.registerTool;
   }
   return createReadOnlyServer(billy, server);
 }
