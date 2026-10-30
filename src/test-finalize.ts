@@ -26,7 +26,7 @@ export async function posted(read:BillyClient,orgId:string,snapshot:any){
 }
 export const finalizeDescriptions:Record<string,string>={
  book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft without VAT. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
- approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against exactly one already-booked test entry. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
+ approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against exactly one already-booked test entry. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
 };
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
  const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
@@ -49,9 +49,16 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  const ref=bank.associations[0].subjectReference;let draftId:string;
  if(/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(ref))draftId=ref.split(':')[1];
  else if(/^transaction:[A-Za-z0-9_-]{1,100}$/.test(ref)){const {transaction}=await read.get('/transactions/'+ref.split(':')[1]);if(transaction?.organizationId!==orgId||transaction.isVoided||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Unsupported booked subject');draftId=transaction.originatorReference.split(':')[1];}
+ else if(/^posting:[A-Za-z0-9_-]{1,100}$/.test(ref)){
+ const {posting}=await read.get('/postings/'+ref.split(':')[1]);
+ if(posting?.id!==ref.split(':')[1]||posting.organizationId!==orgId||posting.accountId!==bank.account.id||posting.isVoided||posting.isBankMatched!==false)throw new NoWriteError('Unsupported posting subject');
+ const {transaction}=await read.get('/transactions/'+id.parse(posting.transactionId));
+ if(transaction?.organizationId!==orgId||transaction.isVoided||transaction.isVoid||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Unsupported posting source');draftId=transaction.originatorReference.split(':')[1];
+ }
  else throw new NoWriteError('Expected one test daybook subject');
  before=await draftSnapshot(read,draftId,orgId);validate(before,'approved');ledger=await posted(read,orgId,before);
  const bankPostings=ledger.postings.filter((p:any)=>p.accountId===bank.account.id);
+ if(ref.startsWith('posting:')&&ref!=='posting:'+bankPostings[0]?.id)throw new NoWriteError('Wrong bank posting association');
  if(bankPostings.length!==1||money(bankPostings[0].amount)!==money(bank.bankLine.amount)||bankPostings[0].side!==bank.bankLine.side||bankPostings[0].isBankMatched)throw new NoWriteError('Bank amount/side mismatch or posting already matched');
  }
  if((await draftSnapshot(read,before.daybookTransaction.id,orgId)).revision!==before.revision)throw new NoWriteError('STALE_REVISION: entry changed during preflight');
