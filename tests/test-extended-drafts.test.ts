@@ -58,3 +58,10 @@ test('VAT requires gross basis and rejects unsupported or altered tax definition
 });
 test('lost VAT code in readback remains pending and cannot duplicate the draft',async()=>{const h=harness({dropTax:true});const a=vatInput();assert.equal((await h.call('create_test_extended_draft',a)).isError,true);assert.equal((await h.call('create_test_extended_draft',a)).isError,true);assert.equal(h.writes(),1);});
 test('VAT line replacement can explicitly remove tax and keeps gross balance',async()=>{const h=harness();const r=await h.call('create_test_extended_draft',vatInput());const before=data(r).result;const u=await h.call('update_test_extended_draft',{id:'draft',expectedRevision:before.revision,operationId:keys[1],reasoning:'remove VAT',lines:input.lines});assert.notEqual(u.isError,true,JSON.stringify(u));assert.equal(data(u).result.daybookTransactionLines[0].taxRateId,undefined);});
+
+test('EUR draft preserves explicit DKK amount, balances in DKK, updates and rejects unsafe currency inputs',async()=>{
+ const fx={...input,lines:[{accountId:'expense',amount:100,baseAmount:747.36,currencyId:'EUR',side:'debit',text:'EUR expense'},{accountId:'bank',amount:747.36,currencyId:'DKK',side:'credit',text:'DKK counterline'}]};
+ const h=harness();const r=await h.call('create_test_extended_draft',fx);assert.notEqual(r.isError,true,JSON.stringify(r));const draft=data(r).result;assert.equal(draft.daybookTransactionLines[0].baseAmount,747.36);
+ const updated=await h.call('update_test_extended_draft',{operationId:keys[1],id:'draft',expectedRevision:draft.revision,reasoning:'test',lines:fx.lines.map(l=>l.currencyId==='EUR'?{...l,baseAmount:750}:{...l,amount:750})});assert.notEqual(updated.isError,true,JSON.stringify(updated));
+ for(const patch of [{baseAmount:undefined},{baseAmount:0},{baseAmount:747.361},{baseAmount:748},{currencyId:'USD'},{taxRateId:'purchase',amountBasis:'gross'}]){const x=harness();assert.equal((await x.call('create_test_extended_draft',{...fx,lines:[{...fx.lines[0],...patch},fx.lines[1]]})).isError,true);assert.equal(x.writes(),0);}
+});
