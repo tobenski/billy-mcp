@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import { BillyClient } from './billy-client.js';
 import { hasAllowedOrigin, isAllowed, type AccessContext } from './worker-auth.js';
 import { registerTestDraftTools, type JournalDB } from './test-drafts.js';
+import { registerTestFileTools } from './test-files.js';
 import { createReadOnlyServer } from './worker-server.js';
 
 // Deployment-only configuration; never supplied by an MCP caller.
@@ -42,7 +43,7 @@ class TestBillyClient extends BillyClient {
 }
 
 function createTestServer(billy: BillyClient, expectedId: string, write?: BillyClient, db?: JournalDB): McpServer {
-  const server = new McpServer({ name: 'billy-test', version: '0.4.0' });
+  const server = new McpServer({ name: 'billy-test', version: '0.5.0' });
   server.registerTool('get_test_organization', {
     title: 'Vis testregnskab',
     description: 'Verify the connected Billy token against the fixed test organization ID. Returns identity and whether isolated draft writes are enabled.',
@@ -67,7 +68,10 @@ function createTestServer(billy: BillyClient, expectedId: string, write?: BillyC
   });
   // Keep the diagnostic tool, then use the production read-only registry itself.
   // This preserves all 51 tools without a second list that can drift.
-  if (write && db) registerTestDraftTools(server, billy, write, db, expectedId);
+  if (write && db) {
+    registerTestDraftTools(server, billy, write, db, expectedId);
+    registerTestFileTools(server, billy, write, db, expectedId);
+  }
   return createReadOnlyServer(billy, server);
 }
 
