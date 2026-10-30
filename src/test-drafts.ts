@@ -88,12 +88,17 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
   }
   const wrap = (fn: (a: any) => Promise<unknown>) => async (args: any) => { try { return jsonResult(await fn(args)); } catch(e) { return errorResult(e); } };
   server.registerTool('get_test_write_operation', {
-    description: 'Inspect the persisted outcome of a test write. Pending means in progress or uncertain; never retry it with a new ID.',
+    description: 'Inspect the persisted outcome of a test write and fresh bank evidence for bank operations. Saved result is historical; current observations never resolve pending state, release locks or authorize retry. Pending means in progress or uncertain; never retry it with a new ID.',
     inputSchema: z.object({ operationId }).strict(), annotations: { readOnlyHint: true },
   }, wrap(async ({operationId}) => {
     await identity();
     const row = await db.prepare('SELECT fingerprint, state, result FROM operations WHERE id = ?').bind(orgId + ':' + operationId).first<Row>();
-    return row ? { operationId, state: row.state, input: JSON.parse(row.fingerprint), result: row.result ? JSON.parse(row.result) : null } : { operationId, state: 'not_found' };
+    if(!row)return {operationId,state:'not_found'};
+    const input=JSON.parse(row.fingerprint);
+    let currentEvidence:any;
+    try{const {inspectBankOperation}=await import('./test-operation-inspection.js');currentEvidence=await inspectBankOperation(read,orgId,input);}
+    catch{currentEvidence={available:false,outcome:'undetermined',safeToRetry:false,reason:'Current evidence could not be verified. Saved journal state and pending lock are unchanged.'};}
+    return {operationId,state:row.state,input,result:row.result?JSON.parse(row.result):null,resultIsHistorical:true,currentEvidence};
   }));
   server.registerTool('create_test_daybook_draft', {
     description: 'Create a balanced draft in the locked test organization, then read its header and all lines. Base currency only, no tax or contra-account shortcuts. Requires a unique operation UUID; reuse exactly the same UUID/input after a lost response. Never books the draft.',
