@@ -137,7 +137,7 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     });
   }));
   server.registerTool('download_test_file',{
-    description:'Download and hash-check bytes from a completed test upload. Default returns verification and metadata only. includeContent returns a base64 chunk (max 65536 bytes) at offset; follow nextOffset to reconstruct the file. API credentials are never sent to download hosts.',
+    description:'Download bytes from a completed test upload. verified/originalMatches mean exact original bytes. PNG files changed by Billy may be returned with verified=false, representation=billy_stored, and separate downloadedSha256/downloadedSizeBytes; visual equivalence is not asserted. Other formats require exact original bytes. Default returns verification and metadata only. includeContent returns a base64 chunk (max 65536 bytes) at offset; follow nextOffset to reconstruct the file. API credentials are never sent to download hosts.',
     inputSchema:z.object({uploadOperationId:uuid,includeContent:z.boolean().default(false),offset:z.number().int().min(0).default(0),chunkSize:z.number().int().min(1).max(65536).default(65536)}).strict(),
     annotations:{readOnlyHint:true,destructiveHint:false},
   },wrap(async({uploadOperationId,includeContent,offset,chunkSize})=>{
@@ -145,9 +145,15 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     const {file}=await read.get('/files/'+source.fileId);
     if(file?.id!==source.fileId||typeof file.downloadUrl!=='string')throw new Error('Invalid file metadata');
     const bytes=await downloadBytes(file.downloadUrl),hash=await sha256(bytes);
-    if(hash!==source.sha256||bytes.length!==source.sizeBytes)throw new Error('Downloaded bytes differ from uploaded bytes');
+    const originalMatches=hash===source.sha256&&bytes.length===source.sizeBytes;
+    if(!originalMatches) {
+      // Billy may rewrite PNG bytes. Never claim original integrity or visual equivalence.
+      if(source.contentType!=='image/png')throw new Error('Downloaded bytes differ from uploaded bytes');
+      decodeFile(Buffer.from(bytes).toString('base64'),source.fileName,source.contentType);
+      if(!Number.isSafeInteger(file.fileSize)||file.fileSize!==bytes.length)throw new Error('Stored PNG size differs from Billy metadata');
+    }
     if(offset>bytes.length)throw new Error('Offset exceeds file size');
     const end=Math.min(offset+chunkSize,bytes.length);
-    return {...source,verified:true,...(includeContent?{offset,base64:Buffer.from(bytes.subarray(offset,end)).toString('base64'),nextOffset:end<bytes.length?end:null}:{})};
+    return {...source,verified:originalMatches,originalMatches,representation:originalMatches?'original':'billy_stored',downloadedSha256:hash,downloadedSizeBytes:bytes.length,...(includeContent?{offset,base64:Buffer.from(bytes.subarray(offset,end)).toString('base64'),nextOffset:end<bytes.length?end:null}:{})};
   }));
 }
