@@ -44,3 +44,47 @@ Lokal integration med simuleret Billy dækker link/unlink, replay, dubletforebyg
 - Slutrevisionen for banklinje/konto/match/associationer var identisk med før testen. Kladdens revision inklusive linjer og PDF-bilag var også uændret.
 - Match isApproved var false både før og efter. Banklinjens native status booked betyder her banklinjestatus, ikke at kladden blev bogført.
 - Testbanklinjen er bevaret til videre test. Ingen godkendelse eller bogføring blev udført.
+
+
+## Reopening an approved match and relinking booked entries (2026-10-30)
+
+The existing `unlink_test_bank_line` now accepts an exact `posting:ID`
+subjectReference for one native posting of an approved test-created DKK daybook
+entry. The supplied bank revision and match ID are mandatory. Only a single bank
+line, single association, exact amount/side, and no fees or differences are
+supported. It performs native `PUT /bankLineMatches/:id` with `isApproved:false`,
+verifies the match is open and the posting is unmatched, then deletes only that
+association. Bank line, group, ledger entry and attachments are retained. The
+completed journal result stores the prior approved match, timestamp and association.
+Billy clears approvedTime on reopening; reapproval receives a new timestamp.
+
+`reconcile_test_bank_line` also accepts one `type:transaction` native transaction
+ID. It requires an empty unapproved match and one exact, unmatched bank posting.
+The created association points to `posting:ID`. `approve_test_bank_match` accepts
+this association and verifies the test daybook origin, exact posting, amount,
+account and side before approving separately. Old draft-link behavior is retained.
+
+Live roundtrip on synthetic E2E A (DKK 120): reopen/unlink succeeded, linking the
+DKK 125 transaction was rejected without mutation, the original DKK 120 transaction
+was relinked and approved. Source draft revision (including file associations),
+posting IDs/amounts and bank line remained unchanged. Replay of the earlier unlink
+returned the saved historical result and did not reopen the now-approved match.
+Always use a fresh getter for current status, not a replay response.
+
+180 automated tests passed, plus TypeScript checking and Worker build. New tests
+cover the complete reopen/relink/reapprove flow, stale revision, foreign/non-test
+sources, wrong posting, amount mismatch/partial allocation, unapproved unlink,
+uncertain native writes and a one-page request-budget check. The active test Worker
+has been live-verified; production is unchanged. Existing schemas/tool count are
+unchanged; refreshing the connector updates descriptions only.
+
+This step changes reconciliation associations, not accounting amounts. Full
+reconciliation of reversal-plus-replacement transactions with multiple bank legs
+is not implemented. Such a correction must not be presented as an end-to-end
+supported amount-correction flow. Bank changes are never inferred from documents.
+
+A timeout or unexpected readback leaves the journal pending; a two-write reopen
+is not atomic. Do not retry with a new UUID or assume rollback. Inspect the exact
+match, posting and journal before any recovery. Concurrent UI changes are not
+atomically locked. The initial approved match is captured in the successful result;
+for a pending operation, preserve the caller's preflight snapshot for investigation.
