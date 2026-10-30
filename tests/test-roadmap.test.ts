@@ -6,9 +6,9 @@ test('every reserved handler fails closed with no network, even when writes enab
  for(const enabled of [false,true]){
  const registry=new Map<string,any>();
  registerRoadmapTools({registerTool(name:string,config:any,handler:any){assert.ok(!registry.has(name));registry.set(name,{config,handler});}} as any,enabled);
- assert.equal(registry.size,21);
+ assert.equal(registry.size,22);
  for(const tool of roadmapTools){const item=registry.get(tool.name);assert.equal(item.config.annotations.readOnlyHint,!tool.mutation);const r=await item.handler({});assert.equal(r.isError,true);const d=JSON.parse(r.content[0].text);assert.equal(d.error_code,'NOT_IMPLEMENTED');assert.equal(d.writePerformed,false);assert.equal(d.tool,tool.name);}
- const r=await registry.get('get_test_tool_status').handler({});const d=JSON.parse(r.content[0].text);assert.equal(d.writesEnabled,enabled);assert.equal(d.tools.length,20);assert.equal(Object.keys(d.numinaCoverage).length,27);
+ const r=await registry.get('get_test_tool_status').handler({});const d=JSON.parse(r.content[0].text);assert.equal(d.writesEnabled,enabled);assert.equal(d.tools.length,21);assert.equal(Object.keys(d.numinaCoverage).length,27);
  }assert.equal(fetch.mock.callCount(),0);
 });
 test('reserved writes require operation identity; reject arbitrary extra fields',()=>{
@@ -18,5 +18,5 @@ test('reserved writes require operation identity; reject arbitrary extra fields'
 });
 test('all 27 Numina capabilities have explicit mapped targets',()=>{
  assert.equal(Object.keys(numinaCoverage).length,27);for(const names of Object.values(numinaCoverage))assert.ok(names.length>0);
- assert.equal(new Set(roadmapTools.map(t=>t.name)).size,20);
+ assert.equal(new Set(roadmapTools.map(t=>t.name)).size,21);
 });
