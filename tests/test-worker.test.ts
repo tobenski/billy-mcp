@@ -15,15 +15,54 @@ async function rpc(method: string, params: Record<string, unknown> = {}) {
     ? JSON.parse(text.split('\n').find(line => line.startsWith('data:'))!.slice(5)) : JSON.parse(text);
 }
 
-test('test deployment only discovers identity tool; mutations and raw requests are absent', async t => {
+test('test deployment only discovers three read tools; mutations and raw requests are absent', async t => {
   const calls = t.mock.method(globalThis, 'fetch', async () => { throw new Error('No network expected'); });
   const result = await rpc('tools/list');
-  assert.deepEqual(result.result.tools.map((tool: any) => tool.name), ['get_test_organization']);
+  assert.deepEqual(result.result.tools.map((tool: any) => tool.name).sort(), ['get_test_organization', 'list_accounts', 'list_daybooks']);
   for (const name of ['billy_raw_request', 'create_daybook_transaction', 'execute_script']) {
     const denied = await rpc('tools/call', { name, arguments: {} });
     assert.ok(denied.error || denied.result?.isError);
   }
   assert.equal(calls.mock.callCount(), 0);
+});
+
+test('accounts and daybooks reuse source filters and pagination after identity verification', async t => {
+  const paths: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname);
+    assert.equal(init?.method, 'GET');
+    assert.equal(new Headers(init?.headers).get('X-Access-Token'), env.BILLY_API_KEY);
+    if (url.pathname === '/v2/organization') return Response.json({ organization: { id: TEST_ORGANIZATION_ID } });
+    assert.equal(url.searchParams.get('organizationId'), TEST_ORGANIZATION_ID);
+    assert.equal(url.searchParams.get('page'), '2');
+    assert.equal(url.searchParams.get('pageSize'), '10');
+    if (url.pathname === '/v2/accounts') {
+      assert.equal(url.searchParams.get('isArchived'), 'false');
+      return Response.json({ accounts: [{ id: 'account-1', name: 'Synthetic account', accountNo: 1000 }], meta: { paging: { page: 2, pageCount: 3 } } });
+    }
+    assert.equal(url.pathname, '/v2/daybooks');
+    return Response.json({ daybooks: [{ id: 'daybook-1', name: 'Synthetic daybook' }], meta: { paging: { page: 2, pageCount: 3 } } });
+  });
+  for (const name of ['list_accounts', 'list_daybooks']) {
+    const result = await rpc('tools/call', { name, arguments: { page: 2, pageSize: 10, ...(name === 'list_accounts' ? { isArchived: false } : {}) } });
+    assert.notEqual(result.result.isError, true);
+    assert.equal(JSON.parse(result.result.content[0].text).meta.paging.pageCount, 3);
+  }
+  assert.deepEqual(paths, ['/v2/organization', '/v2/accounts', '/v2/organization', '/v2/daybooks']);
+});
+
+test('wrong token identity blocks both data endpoints before their data is requested', async t => {
+  const paths: string[] = [];
+  t.mock.method(globalThis, 'fetch', async input => {
+    paths.push(new URL(String(input)).pathname);
+    return Response.json({ organization: { id: 'wrong-company', name: 'Test Regnskab API' } });
+  });
+  for (const name of ['list_accounts', 'list_daybooks']) {
+    const result = await rpc('tools/call', { name, arguments: {} });
+    assert.equal(result.result.isError, true);
+  }
+  assert.deepEqual(paths, ['/v2/organization', '/v2/organization']);
 });
 
 test('unauthenticated, disallowed origin and missing key requests cannot reach Billy', async t => {
