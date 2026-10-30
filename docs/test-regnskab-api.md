@@ -48,7 +48,8 @@ Der oprettes altid draft. Genlæsning returnerer hoved og alle linjer.
 Rettelser omfatter beskrivelse, udvidet beskrivelse og bilagsnummer. Dato, beløb
 og konti er dokumenteret immutable i Billy API og ændres ikke. Sletning og
 rettelser kræver draft, korrekt organisation og værktøjets `mcp-test:`-mærke.
-Ingen endelig bogføring, tilbageførsel, bilagsupload eller bankafstemning er aktiveret.
+Ingen endelig bogføring, tilbageførsel eller bankafstemning er aktiveret.
+Bilagsfunktionerne beskrives nedenfor.
 
 Hvert skrivekald skal have et nyt UUID `operationId`; et genforsøg skal bruge
 præcis samme UUID og input. D1 reserverer UUID før skrivning og gemmer resultatet.
@@ -65,3 +66,29 @@ De lokale tests bruger syntetiske Billy-svar. Live-test skal efter opdatering
 af MCP-værktøjslisten udføre create → read → update → read → delete → list
 samt gentagelse med samme UUID. Registrer live-resultatet separat.
 Analyse og konteringsvurderinger forbliver i chatten.
+
+## Bilag: upload, tilknytning og genhentning
+
+Med kladdeskrivning aktiveret er yderligere tre værktøjer tilgængelige (59 i alt):
+
+- `upload_test_file`: PDF, PNG, JPEG eller GIF som canonical base64, højst 2 MiB.
+  Filnavn, MIME-type og filsignatur kontrolleres. Filindhold gemmes ikke i journalen;
+  den gemmer fil-ID, størrelse og SHA-256. Ingen OCR eller automatisk bilagsoprettelse.
+- `attach_test_file_to_draft`: bruger uploadens operations-ID og en eksisterende
+  testkladde. Tilknytningen oprettes separat via attachments og genlæses. Eksisterende
+  bilag bevares. Samme fil på samme kladde genbruges frem for at oprette dubletter.
+- `download_test_file`: genhenter filen via Billy-metadata uden API-nøgle på download-
+  anmodningen. Kontrollerer SHA-256 og størrelse mod uploaden. Som standard returneres
+  kun kontrolresultat; `includeContent` giver base64 i bidder på højst 65536 bytes.
+  `nextOffset` viser, om flere bidder skal hentes. Arbitrære URL'er og redirects afvises.
+
+Upload og tilknytning har hver sit operations-ID. En vellykket upload må genbruges
+ved en ny tilknytning. Uafklarede uploads må ikke gentages med et nyt operations-ID.
+Der er ingen funktion til at slette selve filen; syntetiske testfiler kan blive i Billy.
+Kladder kan stadig slettes med kladdeværktøjet. Kontrollér bilagsrelationerne bagefter.
+
+Live-kladdetest 2026-10-30: tre linjer 60+40 debet/100 kredit, genlæsning, gentagelse
+uden dublet, tekstrettelse, afvisning af ubalance og ændret input med samme UUID,
+samt sletning bestod. Efter testen var der ingen kladder eller bogførte transaktioner.
+Bilagsværktøjerne har lokale tests, men afventer live-test efter MCP-opdatering.
+
