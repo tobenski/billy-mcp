@@ -1552,3 +1552,7 @@ Ydelser uden for EU, dansk omvendt betalingspligt og ikke-EU-varefakturaer under
 ### EU-salg, 30. oktober 2026
 
 SVE og SYE er nu implementeret i de eksisterende kladde-, bogførings-, fulde tilbageførsels- og enkeltpost-bankværktøjer. Native Rubrik B-validering, 230 beståede tests og live-test med neutraliserede bogføringer er beskrevet i [EU-salgspakken](eu-sales-vat.md). Separat EU-salgsoversigt kræver et senere fakturaforløb og er ikke dækket af kladdetesten.
+
+### Repræsentationsmoms, 30. oktober 2026
+
+Prædefineret KR med en fjerdedels momsfradrag er nu understøttet og live-testet i kladde/bogføring/fuld tilbageførsel og enkeltpost-bankforløb. 232 tests består. [Testpakken](representation-vat.md) dokumenterer Billys to øreafrundinger, neutraliserede testposter og én bevaret historisk pending-operation. Vilkårlige fradragsprocenter er ikke implementeret; sikker afslutning af inspicerede pending-operationer er et særskilt næste trin.
