@@ -56,6 +56,10 @@ get_test_bank_line, reconcile_test_bank_line og unlink_test_bank_line er impleme
 
 book_test_daybook_draft og approve_test_bank_match er implementeret for testoprettede DKK-poster uden moms. En særskilt testpost er bogført og bankafstemt. Billys overgang fra kladde- til posting-tilknytning er håndteret, og journalen er afklaret efter readback. Se [forløb, tests og begrænsninger](finalization.md). Tilbageførsel er endnu ikke implementeret.
 
+## Kontrolbemærkninger
+
+create_test_review og resolve_test_review er live-verificeret på både bilag og bogførte transaktioner: oprettelse, genlæsning, afslutning, replay og afvisning af dubletter/forældede revisioner. Læs noter og reviewRevision via get_test_document/get_transaction. Noterne er gemt særskilt i testværktøjet og spærrer ikke automatisk bogføring. Se [reviewforløbet](reviews.md).
+
 ## Kontrakter
 
 create_test_extended_draft og update_test_extended_draft er nu implementeret for DKK uden moms eller valgfrie tilknytninger. get_daybook_transaction returnerer revision i testskrivemodus. Se [fase 1 og live-test](extended-drafts.md). Inputskemaerne nedenfor er bevaret; ikke-understøttede felter afvises.
