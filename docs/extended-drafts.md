@@ -1,5 +1,7 @@
 # Udvidede kladder, fase 1
 
+Næste momsudvidelse er implementeret: ydelser uden for EU, dansk omvendt betalingspligt og vareimport med separat importmoms. Se [kontrakt og live-test](non-eu-and-domestic-vat.md). Tidligere afgrænsninger nedenfor gælder den oprindelige pakke.
+
 Aktuel EU-udvidelse: køb af varer og ydelser i EU med fuldt fradrag understøttes nu i DKK. Se [kontrakt, momsrapport og live-test](eu-purchase-vat.md). De oprindelige afgrænsninger nedenfor er historiske for første version.
 
 Implementeret og live-testet 2026-10-30 i det isolerede testregnskab. De to inputskemaer er uændrede; der er 84 værktøjer. 220 automatiske tests består, inklusive additive bilag og første momsudvidelse.
