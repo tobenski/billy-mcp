@@ -80,3 +80,46 @@ test('observed Billy EU S3 bucket is allowed; other S3 buckets are blocked',asyn
   await assert.rejects(downloadBytes('https://another-bucket.s3.eu-north-1.amazonaws.com/test.pdf'));
   assert.equal(calls.mock.callCount(),1);
 });
+
+function associationHarness(options:{state?:string;sourceOrg?:string;sourceOwner?:string;targetOwner?:string;removeOthers?:boolean}={}) {
+  const handlers:any={},schemas:any={},rows=new Map<string,any>();let writes=0;
+  const links:any[]=[{id:'keep',organizationId:'org',ownerReference:'daybookTransaction:draft',fileId:'other'},{id:'remove',organizationId:'org',ownerReference:options.targetOwner??'daybookTransaction:draft',fileId:'file'}];
+  const inbox={id:'inbox',organizationId:options.sourceOrg??'org',ownerReference:options.sourceOwner??null,fileId:'inbox-file'};
+  const db:any={prepare(sql:string){return{bind(...a:any[]){return{async first(){return rows.get(a[0])??null},async run(){
+    if(sql.startsWith('INSERT')){if(rows.has(a[0]))return{success:true,meta:{changes:0}};rows.set(a[0],{fingerprint:a[1],state:'pending',result:null});}
+    else if(sql.startsWith('DELETE'))rows.delete(a[0]);else Object.assign(rows.get(a[1]),{state:'complete',result:a[0]});return{success:true,meta:{changes:1}};
+  }}}}}};
+  const read:any={async get(p:string){
+    if(p==='/organization')return{organization:{id:'org'}};
+    if(p==='/daybookTransactions/draft')return{daybookTransaction:{organizationId:'org',state:options.state??'draft',apiType:'mcp-test:x',description:'current'}};
+    if(p==='/attachments/inbox')return{attachment:inbox};
+    if(p.startsWith('/attachments/'))return{attachment:links.find(a=>a.id===p.split('/').pop())};
+    if(p.startsWith('/files/'))return{file:{id:p.split('/').pop()}};
+    throw Error(p);
+  },async fetchAll(){return links.filter(a=>a.ownerReference==='daybookTransaction:draft').map(a=>({...a}));}};
+  const write:any={async post(p:string,b:any){writes++;assert.equal(p,'/attachments');const a={id:'new',...b.attachment};links.push(a);return{attachments:[a]};},async del(p:string){writes++;const at=links.findIndex(a=>p==='/attachments/'+a.id);links.splice(at,1);if(options.removeOthers)links.length=0;return{};}};
+  registerTestFileTools({registerTool(n:string,c:any,h:any){handlers[n]=h;schemas[n]=c.inputSchema;}} as any,read,write,db,'org');
+  return{async call(n:string,args:any){return handlers[n](schemas[n].parse(args));},links,inbox,writes:()=>writes};
+}
+const associationArgs={operationId:attachKey,attachmentId:'inbox',daybookTransactionId:'draft',expectedDescription:'current'};
+test('inbox reuse preserves source and other links, repeat UUID and new UUID do not duplicate',async()=>{
+  const h=associationHarness();for(const key of [attachKey,attachKey,uploadKey]){
+    const r=await h.call('reuse_test_inbox_attachment',{...associationArgs,operationId:key});assert.notEqual(r.isError,true,JSON.stringify(r));
+  }assert.equal(h.writes(),1);assert.equal(h.links.length,3);assert.equal(h.inbox.ownerReference,null);
+});
+test('remove association preserves file and other links; repeat UUID is replayed',async()=>{
+  const h=associationHarness();const args={...associationArgs,attachmentId:'remove'};
+  const r=await h.call('remove_test_draft_attachment',args);assert.notEqual(r.isError,true,JSON.stringify(r));
+  assert.equal(JSON.parse(r.content[0].text).result.fileRetained,true);assert.deepEqual(h.links.map(a=>a.id),['keep']);
+  assert.notEqual((await h.call('remove_test_draft_attachment',args)).isError,true);assert.equal(h.writes(),1);
+});
+test('reuse rejects foreign or already handled source, approved draft and stale description',async()=>{
+  for(const options of [{sourceOrg:'foreign'},{sourceOwner:'bill:other'},{state:'approved'}]){
+    const h=associationHarness(options);assert.equal((await h.call('reuse_test_inbox_attachment',associationArgs)).isError,true);assert.equal(h.writes(),0);
+  }
+  const h=associationHarness();assert.equal((await h.call('reuse_test_inbox_attachment',{...associationArgs,expectedDescription:'old'})).isError,true);assert.equal(h.writes(),0);
+});
+test('removal rejects attachment from other owner and reports lost unrelated associations',async()=>{
+  const wrong=associationHarness({targetOwner:'bill:other'});assert.equal((await wrong.call('remove_test_draft_attachment',{...associationArgs,attachmentId:'remove'})).isError,true);assert.equal(wrong.writes(),0);
+  const lost=associationHarness({removeOthers:true});assert.equal((await lost.call('remove_test_draft_attachment',{...associationArgs,attachmentId:'remove'})).isError,true);assert.equal(lost.writes(),1);
+});
