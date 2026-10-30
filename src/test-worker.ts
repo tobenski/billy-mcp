@@ -4,6 +4,8 @@ import { BillyClient } from './billy-client.js';
 import { hasAllowedOrigin, isAllowed, type AccessContext } from './worker-auth.js';
 import { registerTestDraftTools, type JournalDB } from './test-drafts.js';
 import { registerTestFileTools } from './test-files.js';
+import { extendedHandler, draftSnapshot } from './test-extended-drafts.js';
+import { errorResult, jsonResult } from './tools/helpers.js';
 import { registerRoadmapTools } from './test-roadmap.js';
 import { createReadOnlyServer } from './worker-server.js';
 
@@ -73,7 +75,11 @@ function createTestServer(billy: BillyClient, expectedId: string, write?: BillyC
     registerTestDraftTools(server, billy, write, db, expectedId);
     registerTestFileTools(server, billy, write, db, expectedId);
   }
-  registerRoadmapTools(server, Boolean(write && db));
+  registerRoadmapTools(server, Boolean(write && db),write&&db?Object.fromEntries(['create_test_extended_draft','update_test_extended_draft'].map(name=>[name,extendedHandler(billy,write,db,expectedId,name)])):{});
+  if(write&&db){
+    const register=server.registerTool.bind(server);
+    server.registerTool=((name:any,config:any,handler:any)=>name==='get_daybook_transaction'?register(name,{...config,description:config.description+' In test-write mode also returns all lines, attachments and an optimistic revision for extended updates.'},async({id}:any)=>{try{return jsonResult(await draftSnapshot(billy,id,expectedId));}catch(e){return errorResult(e);}}):register(name,config,handler)) as typeof server.registerTool;
+  }
   return createReadOnlyServer(billy, server);
 }
 
