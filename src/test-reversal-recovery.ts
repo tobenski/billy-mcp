@@ -16,7 +16,7 @@ export async function recoverPendingReversal(read:BillyClient,db:JournalDB,orgId
  const marker='mcp-test:correction:'+a.transactionId;
  const candidates=(await read.fetchAll('/daybookTransactions','daybookTransactions',{organizationId:orgId,apiType:marker})).filter((h:any)=>h.apiType===marker&&h.state!=='voided');
  if(candidates.length!==1)throw Error('Pending reversal requires exactly one existing draft; no recovery performed');
- const draft=await draftSnapshot(read,candidates[0].id,orgId);validate(draft,'draft',original.hasVat);
+ const draft=await draftSnapshot(read,candidates[0].id,orgId);validate(draft,'draft',original.hasVat,original.hasFx);
  const h=draft.daybookTransaction;
  if(h.apiType!==marker||h.daybookId!==original.source.daybookTransaction.daybookId||h.entryDate!==a.entryDate||h.description!==a.description||h.extendedDescription!=='Korrektionskladde for transaction '+a.transactionId+'. '+a.reasoning||h.voucherNo!=null&&h.voucherNo!=='')throw Error('Pending reversal header mismatch');
  validateReversalRecoveryLines(original,draft);
