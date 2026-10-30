@@ -7,7 +7,7 @@ const uploadKey='55555555-5555-4555-8555-555555555555';
 const attachKey='66666666-6666-4666-8666-666666666666';
 const pdf=Buffer.from('%PDF-1.4\nSynthetic test fixture\n%%EOF');
 const args={operationId:uploadKey,fileName:'test.pdf',contentType:'application/pdf',base64:pdf.toString('base64')};
-function harness(options:{org?:string;state?:string;timeout?:boolean}={}) {
+function harness(options:{org?:string;state?:string;timeout?:boolean;fileSize?:number;expectedBytes?:Buffer}={}) {
   const rows=new Map<string,any>(); const handlers:Record<string,any>={}; const schemas:Record<string,any>={};let writes=0;let linked:any=null;
   const db:any={prepare(sql:string){return{bind(...a:any[]){return{
     async first(){return rows.get(a[0])??null},async run(){
@@ -20,10 +20,10 @@ function harness(options:{org?:string;state?:string;timeout?:boolean}={}) {
     if(path==='/organization')return{organization:{id:options.org??'org'}};
     if(path==='/daybookTransactions/draft')return{daybookTransaction:{organizationId:'org',state:options.state??'draft',apiType:'mcp-test:example',description:'test'}};
     if(path==='/attachments/link')return{attachment:linked};
-    if(path==='/files/file')return{file:{id:'file',downloadUrl:'https://download.billy.dk/test.pdf?token=synthetic'}};
+    if(path==='/files/file')return{file:{id:'file',fileSize:options.fileSize,downloadUrl:'https://download.billy.dk/test.pdf?token=synthetic'}};
     throw Error('Unexpected read '+path);
   },async fetchAll(){return linked?[linked]:[]}};
-  const write:any={async postBinary(path:string,bytes:Uint8Array,opts:any){writes++;assert.equal(path,'/files');assert.deepEqual(Buffer.from(bytes),pdf);assert.equal(opts.organizationId,'org');if(options.timeout)throw Error('timeout');return{files:[{id:'file'}]};},async post(path:string,body:any){writes++;assert.equal(path,'/attachments');linked={id:'link',...body.attachment};return{attachments:[linked]};}};
+  const write:any={async postBinary(path:string,bytes:Uint8Array,opts:any){writes++;assert.equal(path,'/files');assert.deepEqual(Buffer.from(bytes),options.expectedBytes??pdf);assert.equal(opts.organizationId,'org');if(options.timeout)throw Error('timeout');return{files:[{id:'file'}]};},async post(path:string,body:any){writes++;assert.equal(path,'/attachments');linked={id:'link',...body.attachment};return{attachments:[linked]};}};
   registerTestFileTools({registerTool(name:string,config:any,handler:any){handlers[name]=handler;schemas[name]=config.inputSchema;}} as any,read,write,db,'org');
   return{async call(name:string,input:any){return handlers[name](schemas[name].parse(input));},writes:()=>writes,rows};
 }
@@ -122,4 +122,21 @@ test('reuse rejects foreign or already handled source, approved draft and stale 
 test('removal rejects attachment from other owner and reports lost unrelated associations',async()=>{
   const wrong=associationHarness({targetOwner:'bill:other'});assert.equal((await wrong.call('remove_test_draft_attachment',{...associationArgs,attachmentId:'remove'})).isError,true);assert.equal(wrong.writes(),0);
   const lost=associationHarness({removeOthers:true});assert.equal((await lost.call('remove_test_draft_attachment',{...associationArgs,attachmentId:'remove'})).isError,true);assert.equal(lost.writes(),1);
+});
+
+const pngOriginal=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.from('original')]);
+const pngStored=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.from('stored')]);
+const pngArgs={...args,fileName:'test.png',contentType:'image/png',base64:pngOriginal.toString('base64')};
+test('rewritten PNG returns stored bytes in chunks without claiming original verification',async t=>{
+ const h=harness({fileSize:pngStored.length,expectedBytes:pngOriginal});assert.notEqual((await h.call('upload_test_file',pngArgs)).isError,true);
+ t.mock.method(globalThis,'fetch',async()=>new Response(pngStored));
+ const parts:Buffer[]=[];let offset=0;
+ for(;;){const r=await h.call('download_test_file',{uploadOperationId:uploadKey,includeContent:true,offset,chunkSize:5});assert.notEqual(r.isError,true,JSON.stringify(r));const d=JSON.parse(r.content[0].text);
+ assert.equal(d.verified,false);assert.equal(d.originalMatches,false);assert.equal(d.representation,'billy_stored');assert.equal(d.sha256,await sha256(pngOriginal));assert.equal(d.downloadedSha256,await sha256(pngStored));assert.equal(d.downloadedSizeBytes,pngStored.length);parts.push(Buffer.from(d.base64,'base64'));if(d.nextOffset===null)break;offset=d.nextOffset;}
+ assert.deepEqual(Buffer.concat(parts),pngStored);
+});
+test('PNG signature and stored metadata size remain mandatory for rewritten bytes',async t=>{
+ const f=t.mock.method(globalThis,'fetch',async()=>new Response(pngStored));
+ for(const size of [undefined,999]){const h=harness({fileSize:size,expectedBytes:pngOriginal});assert.notEqual((await h.call('upload_test_file',pngArgs)).isError,true);assert.equal((await h.call('download_test_file',{uploadOperationId:uploadKey})).isError,true);}
+ const h=harness({fileSize:4,expectedBytes:pngOriginal});assert.notEqual((await h.call('upload_test_file',pngArgs)).isError,true);f.mock.mockImplementation(async()=>new Response('oops'));assert.equal((await h.call('download_test_file',{uploadOperationId:uploadKey})).isError,true);
 });
