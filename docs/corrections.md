@@ -27,9 +27,8 @@ remain intact. The proposal copies file links and requires separate booking.
 `reversalEligible=false` when this is supported. Existing tool schemas are unchanged.
 
 A changed bank amount/account/side, extra bank leg or reversal-only request is
-rejected with `BANK_MATCH_PRESERVED`. This is not support for reopening an approved
-bank match. Billy documents unmatching in its UI, but a verified API workflow for
-that is still outstanding: https://www.billy.dk/support/article/banksynkronisering/
+rejected with `BANK_MATCH_PRESERVED`. This handler preserves the match. To change the bank amount, use the separately
+verified reopen and grouped-reconciliation workflow described below.
 No automatic interpretation or account recommendation is performed by the server.
 
 Source revisions now include the verified native bank evidence. Booking checks
@@ -60,3 +59,21 @@ Typecheck, Worker build and automated regression tests cover matched reclassific
 changed bank amount/account/side, duplicate bank legs, reversal refusal, changed
 approval, broken associations, replay and a source-read budget regression. Only the
 test Worker was deployed; production is unchanged.
+
+
+## Amount correction after reopening (live verified 2026-10-30)
+
+Read the approved single-posting bank match, reopen/unlink its exact posting with
+`unlink_test_bank_line`, then read a fresh source revision. Propose the full
+replacement and book the correction separately. Link the original native transaction
+and correction native transaction together using `reconcile_test_bank_line`, then
+approve with a fresh bank revision. All bank legs are included: original, reversal
+and replacement. Their signed net must equal the existing bank line exactly.
+A changed accounting amount does not change bank evidence: a difference is rejected.
+
+Synthetic live tests changed A120 to125 and B125 to120, matched each group to the
+existing bank line with the correct amount, and approved both. All six bank legs
+were matched; originals, files and bank lines were preserved. A125 against a120
+bank line was rejected without mutation. Replay caused no duplicate approval.
+187 automated tests plus typecheck/build passed. See bank-links.md for boundaries:
+grouped approved matches cannot yet be reopened, and correction chains are blocked.
