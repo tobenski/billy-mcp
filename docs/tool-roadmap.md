@@ -1,6 +1,6 @@
 # Reserverede Billy-værktøjer, kontrakt v1
 
-13 stubs, syv live-testede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
+11 stubs, ni implementerede fase 1-værktøjer og ét statusværktøj er tilføjet testserveren. Med kladdeskrivning aktiveret er der 82 værktøjer. Produktionsserveren er uændret.
 
 Alle stubs returnerer isError=true og NOT_IMPLEMENTED uden API-kald, journalreservation eller regnskabsændring. Skriveværktøjer er markeret som skrivende efter deres tilsigtede funktion, selv om stubs ikke skriver. Ingen status skifter automatisk til aktiv.
 
@@ -51,6 +51,10 @@ get_test_document og search_test_documents er implementeret som native læsninge
 ## Bankværktøjer
 
 get_test_bank_line, reconcile_test_bank_line og unlink_test_bank_line er implementeret med status implemented_phase1. Tilknytning og fjernelse er live-verificeret på den importerede testbanklinje; replay, stale revision og bevaring af banklinje/kladde/PDF er kontrolleret. Fase 1 tillader kun én banklinje i eksisterende ikke-godkendt match og én DKK-testkladde. Se [bankforløb og nødvendig testlinje](bank-links.md).
+
+## Bogføring og endelig afstemning
+
+book_test_daybook_draft og approve_test_bank_match er implementeret for testoprettede DKK-poster uden moms. En særskilt testpost er bogført og bankafstemt. Billys overgang fra kladde- til posting-tilknytning er håndteret, og journalen er afklaret efter readback. Se [forløb, tests og begrænsninger](finalization.md). Tilbageførsel er endnu ikke implementeret.
 
 ## Kontrakter
 
