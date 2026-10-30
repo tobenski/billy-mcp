@@ -1556,3 +1556,7 @@ SVE og SYE er nu implementeret i de eksisterende kladde-, bogførings-, fulde ti
 ### Repræsentationsmoms, 30. oktober 2026
 
 Prædefineret KR med en fjerdedels momsfradrag er nu understøttet og live-testet i kladde/bogføring/fuld tilbageførsel og enkeltpost-bankforløb. 232 tests består. [Testpakken](representation-vat.md) dokumenterer Billys to øreafrundinger, neutraliserede testposter og én bevaret historisk pending-operation. Vilkårlige fradragsprocenter er ikke implementeret; sikker afslutning af inspicerede pending-operationer er et særskilt næste trin.
+
+### Rubrik C og øvrige nulmomskoder, 30. oktober 2026
+
+SVU, SYU og SOB kræver nu native Rubrik C; SF og KF kræver ingen omsætningsrubrik. Alle fem er implementeret og live-testet gennem bilag, bogføring, enkeltpost-bankforløb og fuld tilbageførsel. 242 tests består, alle testbeløb er neutraliseret. Se [samlet pakke](remaining-standard-vat.md). Alle 15 prædefinerede koder læst i testregnskabet er nu dækket inden for de beskrevne DKK-begrænsninger; vilkårlig delvis fradragsret og samlet blandet-momsregression er næste momsdel.
