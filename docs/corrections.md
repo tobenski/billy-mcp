@@ -1,5 +1,7 @@
 # Correction drafts: replacement, reversal and bank-preserving reclassification
 
+Aktuel momsudvidelse: standard dansk 25 % moms kan bogføres og fuldt tilbageføres. Bankafstemning med moms og erstatningsrettelser med moms er fortsat afgrænset fra. Se [kontrakt og live-test](vat-booking.md). De tidligere testforløb nedenfor er historiske.
+
 `propose_test_booked_change` creates a draft with exact opposite sides of the original native postings, followed by the supplied full replacement. `propose_test_reversal` creates only the opposite postings. Both preserve the original, copy links to existing files and require separate `book_test_daybook_draft`. These are compensating entries, not Billy native void operations.
 
 Use the native transaction ID and revision from `get_transaction`. Only active test-tool-created DKK daybook entries without tax or linked payments are supported. Unbankmatched entries allow full replacement/reversal. Supported approved bank matches allow non-bank reclassification as described below. Corrections of corrections are refused. Dates cannot precede the source date. One active proposal or booked correction is allowed per source. Operation UUID replay returns the same result.
