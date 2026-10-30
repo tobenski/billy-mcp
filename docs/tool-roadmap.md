@@ -1560,3 +1560,7 @@ Prædefineret KR med en fjerdedels momsfradrag er nu understøttet og live-teste
 ### Rubrik C og øvrige nulmomskoder, 30. oktober 2026
 
 SVU, SYU og SOB kræver nu native Rubrik C; SF og KF kræver ingen omsætningsrubrik. Alle fem er implementeret og live-testet gennem bilag, bogføring, enkeltpost-bankforløb og fuld tilbageførsel. 242 tests består, alle testbeløb er neutraliseret. Se [samlet pakke](remaining-standard-vat.md). Alle 15 prædefinerede koder læst i testregnskabet er nu dækket inden for de beskrevne DKK-begrænsninger; vilkårlig delvis fradragsret og samlet blandet-momsregression er næste momsdel.
+
+### Delvist fradrag og blandet regression, 30. oktober 2026
+
+[Samlet testrapport](partial-deduction-and-mixed-vat.md): eksplicit bogføringsforløb for 23/37/50 % fradrag, alle 15 standardkoder i blandede kladder og 252 beståede tests. Egne procentmomskoder er ikke implementeret; procenter og beløb fastlægges i chatten. Syv-kode-tilbageførsler fik requestbudgetrettelser og en snæver journalgenopretning af nøjagtigt verificerede, allerede oprettede tilbageførselskladder uden native writes. Post 61-76 er neutraliseret; to historiske bogføringsoperationer står stadig pending som beskrevet i rapporten.
