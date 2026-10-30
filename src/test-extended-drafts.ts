@@ -23,14 +23,16 @@ function normalize(lines:any[]){
  const result=lines.map(l=>{
  validId(l.accountId);
  if(!Number.isFinite(l.amount)||l.amount<=0||l.amount>1000000||Math.abs(l.amount*100-Math.round(l.amount*100))>1e-7)throw new NoWriteError('Invalid amount; use positive amounts with at most two decimals');
- if(l.currencyId&&l.currencyId!=='DKK'||l.taxRateId!=null||l.baseAmount!==undefined&&l.baseAmount!==l.amount)throw new NoWriteError('Only DKK without VAT or conversion is supported');
+ if(l.currencyId&&l.currencyId!=='DKK'||l.baseAmount!==undefined&&l.baseAmount!==l.amount)throw new NoWriteError('Only DKK without conversion is supported');
+ if(l.taxRateId!=null){validId(l.taxRateId);if(l.amountBasis!=='gross')throw new NoWriteError('VAT lines require explicit amountBasis gross; net input is not supported');}
+ if(l.amountBasis!==undefined&&l.amountBasis!=='gross')throw new NoWriteError('Only gross amountBasis is supported');
  if(l.text.length>100)throw new NoWriteError('Line text exceeds 100 characters');
  balance+=Math.round(l.amount*100)*(l.side==='debit'?1:-1);
- return{accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:'DKK'};
+ return{accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:'DKK',...(l.taxRateId!=null?{taxRateId:l.taxRateId}:{})};
  });
  if(balance!==0)throw new NoWriteError('Unbalanced draft');return result;
 }
-function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK'})).sort();}
+function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK',taxRateId:l.taxRateId??null})).sort();}
 export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){
  return async(a:any)=>{try{
  const {organization:org}=await read.get('/organization');if(org?.id!==orgId||org.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
@@ -45,14 +47,31 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(!creating&&!attachmentIds.length&&!['entryDate','description','voucherNo','lines'].some(k=>a[k]!==undefined))throw new NoWriteError('Supply a change');
  if(creating)validId(a.daybookId);else validId(a.id);
  return jsonResult(await journalRun(db,orgId,a.operationId,creating?'create:'+a.operationId:a.id,{action:name,...a},async()=>{
- let before:any;const sources:any[]=[];
+ let before:any;const sources:any[]=[];let taxRates:any[]=[];
  try{
  if(creating){const books=await read.fetchAll('/daybooks','daybooks',{organizationId:orgId});if(!books.some((b:any)=>b.id===a.daybookId))throw new NoWriteError('Invalid daybook');}
  else{
  before=await draftSnapshot(read,a.id,orgId);const h=before.daybookTransaction;
  if(h.state!=='draft'||!h.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Only test-tool-created drafts can be changed');
  if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_daybook_transaction again');
- if(before.daybookTransactionLines.some((l:any)=>l.taxRateId||l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||l.currencyId!=='DKK'))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
+ if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||l.currencyId!=='DKK'))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
+ }
+ // Validate both existing and proposed tax codes, including header-only changes.
+ const taxIds=new Set<string>([...(lines??[]),...(before?.daybookTransactionLines??[])].map((l:any)=>l.taxRateId).filter(Boolean));
+ if(taxIds.size){
+ const rates=await read.fetchAll('/taxRates','taxRates',{organizationId:orgId});
+ for(const taxId of taxIds){
+ const rate=rates.find((r:any)=>r.id===taxId);
+ if(!rate||rate.organizationId!==orgId||rate.isActive!==true||rate.isPredefined!==true||rate.rate!==0.25||rate.taxRateGroup!=='local'||!['p_dk_25','s_dk_25'].includes(rate.predefinedTag)||rate.isMissingStandardTaxRate!==false)throw new NoWriteError('Only active standard Danish 25% purchase/sales VAT codes are supported');
+ const purchase=rate.predefinedTag==='p_dk_25';
+ if(rate.appliesToPurchases!==purchase||rate.appliesToSales!==!purchase)throw new NoWriteError('Unexpected VAT applicability');
+ const components=await read.fetchAll('/taxRateDeductionComponents','taxRateDeductionComponents',{taxRateId:taxId});
+ if(components.length!==1||components[0].taxRateId!==taxId||components[0].source!=='tax'||components[0].share!==1)throw new NoWriteError('Only full standard VAT deduction components supported');
+ validId(components[0].accountId);
+ const {account}=await read.get('/accounts/'+components[0].accountId);
+ if(account?.organizationId!==orgId||account.isArchived)throw new NoWriteError('Invalid VAT account');
+ taxRates.push({...rate,deductionComponents:components});
+ }
  }
  for(const sourceId of new Set(attachmentIds)){
  const {attachment}=await read.get('/attachments/'+sourceId);
@@ -86,7 +105,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  for(const k of ['entryDate','description','voucherNo'])if(fields[k]!==undefined&&after.daybookTransaction[k]!==fields[k])throw new Error('Header readback mismatch');
  if(stable(comparable(after.daybookTransactionLines))!==stable(comparable(lines??before.daybookTransactionLines)))throw new Error('Line replacement readback mismatch');
  if(existing.some((x:any)=>!after.attachments.some((y:any)=>stable(x)===stable(y))))throw new Error('Existing attachment changed');
- return {...after,attachmentReuse,reasoning:a.reasoning,limitations:['DKK only; no VAT or linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
+ return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['DKK; gross amounts only; standard Danish 25% purchase/sales VAT or no VAT.','VAT booking and reversal are not enabled by this draft operation; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
  }));
  }catch(e){return errorResult(e);}};
 }
