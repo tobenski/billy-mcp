@@ -36,7 +36,6 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  try{
  if(booking){
  before=await draftSnapshot(read,a.daybookTransactionId,orgId);validate(before,'draft');
- if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
  if(before.revision!==a.expectedRevision||before.daybookTransaction.description!==a.expectedDescription)throw new NoWriteError('STALE_REVISION or description; read draft again');
  for(const accountId of new Set(before.daybookTransactionLines.map((l:any)=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');}
  }else{
@@ -64,7 +63,10 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved');
  if(stable(financial(after.daybookTransactionLines))!==stable(financial(before.daybookTransactionLines))||stable(after.attachments)!==stable(before.attachments)||after.daybookTransaction.entryDate!==before.daybookTransaction.entryDate||after.daybookTransaction.description!==before.daybookTransaction.description)throw new Error('Entry or attachments changed during finalization');
  const verified=await posted(read,orgId,after);
- if(booking)return{...after,...verified,reasoning:a.reasoning};
+ if(booking){
+ if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
+ return{...after,...verified,reasoning:a.reasoning};
+ }
  const bankAfter=await bankSnapshot(read,orgId,bank.bankLine.id);
  if(bankAfter.match?.id!==a.matchId||bankAfter.match.isApproved!==true||bankAfter.bankLine.accountId!==bank.bankLine.accountId||bankAfter.bankLine.amount!==bank.bankLine.amount||bankAfter.bankLine.side!==bank.bankLine.side)throw new Error('Bank approval readback mismatch');
  const bp=verified.postings.filter((p:any)=>p.accountId===bank.account.id);if(bp.length!==1||bp[0].isBankMatched!==true||bankAfter.associations.length!==1||bankAfter.associations[0].subjectReference!=='posting:'+bp[0].id)throw new Error('Native bank posting is not matched');
