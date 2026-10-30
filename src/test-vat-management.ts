@@ -27,7 +27,7 @@ export async function closeBooking(read:BillyClient,db:JournalDB,orgId:string,a:
  if(!row||row.state!=='pending')throw Error('Expected an existing pending booking operation');
  const input=JSON.parse(row.fingerprint);
  if(input.action!=='book_test_daybook_draft'||input.operationId!==a.operationId||row.target!==orgId+':'+id.parse(input.daybookTransactionId))throw Error('Pending operation is not the expected booking');
- const after=await draftSnapshot(read,input.daybookTransactionId,orgId);validate(after,'approved',true);
+ const after=await draftSnapshot(read,input.daybookTransactionId,orgId);validate(after,'approved',true,true);
  if(after.revision!==a.expectedRevision||after.daybookTransaction.description!==input.expectedDescription)throw Error('STALE_REVISION or description');
  const sorted=(xs:any[])=>[...xs].sort((a,b)=>a.id.localeCompare(b.id));
  const header={...after.daybookTransaction,state:'draft'};
