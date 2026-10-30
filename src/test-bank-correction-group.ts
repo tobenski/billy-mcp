@@ -11,7 +11,7 @@ const cents=(n:any)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0||Math.ab
 function supported(b:any){if(!b.match||b.match.isApproved!==false||b.lines.length!==1||b.account.isBankAccount!==true||b.account.isArchived||b.account.currencyId!=='DKK'||b.match.differenceType||b.match.feeAccountId||b.match.amount!==b.bankLine.amount||b.match.side!==b.bankLine.side)throw new NoWriteError('Expected unapproved single-line DKK match without fees/differences');}
 const refs=(b:any)=>b.associations.map((a:any)=>a.subjectReference).sort();
 const canon=(ps:any[])=>ps.map(p=>{const {isBankMatched,...rest}=p;return stable(rest);}).sort();
-async function groupEvidence(read:BillyClient,org:string,bank:any,transactionIds:string[]){
+async function groupEvidence(read:BillyClient,org:string,bank:any,transactionIds:string[],matched=false){
  if(transactionIds.length!==2||new Set(transactionIds).size!==2)throw new NoWriteError('Exactly one original and one correction transaction required');
  const entries:any[]=[];
  for(const txid of transactionIds){
@@ -23,7 +23,7 @@ async function groupEvidence(read:BillyClient,org:string,bank:any,transactionIds
  const originals=entries.filter(e=>!e.source.daybookTransaction.apiType.startsWith('mcp-test:correction:'));
  if(originals.length!==1||!entries.some(e=>e.source.daybookTransaction.apiType==='mcp-test:correction:'+originals[0].transaction.id))throw new NoWriteError('Transactions are not an original/correction pair');
  const bankPostings=entries.flatMap(e=>e.postings.filter((p:any)=>p.accountId===bank.account.id));
- if(bankPostings.length<2||bankPostings.length>3||bankPostings.some(p=>p.currencyId!=='DKK'||p.isBankMatched!==false))throw new NoWriteError('Expected 2 to 3 unmatched DKK bank postings');
+ if(bankPostings.length<2||bankPostings.length>3||bankPostings.some(p=>p.currencyId!=='DKK'||p.isBankMatched!==matched))throw new NoWriteError('Expected 2 to 3 DKK bank postings with consistent match status');
  const net=bankPostings.reduce((sum,p)=>sum+cents(p.amount)*(p.side==='debit'?1:-1),0);
  const expected=cents(bank.bankLine.amount)*(bank.bankLine.side==='debit'?1:-1);
  if(net!==expected)throw new NoWriteError('BANK_DIFFERENCE: original and correction bank postings do not equal the bank line; no link or approval performed');
@@ -67,5 +67,38 @@ export async function correctionGroupApprove(read:BillyClient,write:BillyClient,
  if(after.match?.id!==a.matchId||after.match.isApproved!==true||stable(after.lines)!==stable(before.lines)||stable(refs(after))!==stable(refs(before)))throw new Error('Correction group approval readback mismatch');
  const postings=await verifiedPostings(read,org,g,true);
  return{...after,postings,transactionIds:g.entries.map((e:any)=>e.transaction.id),reasoning:a.reasoning,ledgerEffect:'none'};
+ }));
+}catch(e){return errorResult(e);}}
+
+// Explicit group reference prevents a request for one posting from deleting peers.
+export async function correctionGroupUnlink(read:BillyClient,write:BillyClient,db:JournalDB,org:string,a:any){try{
+ id.parse(a.bankLineId);id.parse(a.matchId);
+ if(a.subjectReference!=='group:'+a.matchId)throw new NoWriteError('Explicit group:matchId reference required');
+ const before=await bankSnapshot(read,org,a.bankLineId);
+ return jsonResult(await journalRun(db,org,a.operationId,'bankmatch:'+a.matchId,{action:'unlink_test_bank_line',...a},async()=>{
+ let g:any;
+ try{
+ if(typeof before.match?.isApproved!=='boolean')throw new NoWriteError('Unknown approval state');
+ supported({...before,match:{...before.match,isApproved:false}});
+ if(before.match.id!==a.matchId||before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read bank line again');
+ if(before.associations.length<2||before.associations.length>3)throw new NoWriteError('Expected complete correction group');
+ const txids=new Set<string>();
+ for(const association of before.associations){id.parse(association.id);const r=association.subjectReference;if(!/^posting:[A-Za-z0-9_-]{1,100}$/.test(r))throw new NoWriteError('Expected posting association');const {posting:p}=await read.get('/postings/'+r.split(':')[1]);if(p?.id!==r.split(':')[1]||p.organizationId!==org||p.accountId!==before.account.id)throw new NoWriteError('Unexpected posting association');txids.add(p.transactionId);}
+ g=await groupEvidence(read,org,before,[...txids],before.match.isApproved);
+ if(stable(refs(before))!==stable(g.bankPostings.map((p:any)=>'posting:'+p.id).sort()))throw new NoWriteError('Incomplete or duplicate correction group');
+ await freshSources(read,org,g);
+ if((await bankSnapshot(read,org,a.bankLineId)).revision!==before.revision)throw new NoWriteError('STALE_REVISION: bank changed');
+ }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Group unlink preflight failed; no write performed');}
+ if(before.match.isApproved){
+ await write.put('/bankLineMatches/'+a.matchId,{bankLineMatch:{isApproved:false}});
+ const {bankLineMatch:m}=await read.get('/bankLineMatches/'+a.matchId);
+ if(m?.id!==a.matchId||m.accountId!==before.account.id||m.isApproved!==false)throw new Error('Group reopening readback mismatch');
+ await verifiedPostings(read,org,g,false);
+ }
+ for(const association of before.associations)await write.del('/bankLineSubjectAssociations/'+association.id);
+ const after=await bankSnapshot(read,org,a.bankLineId);
+ if(after.match?.id!==a.matchId||after.match.isApproved!==false||stable(after.lines)!==stable(before.lines)||after.associations.length)throw new Error('Group unlink readback mismatch');
+ const postings=await verifiedPostings(read,org,g,false);
+ return{...after,before,postings,transactionIds:g.entries.map((e:any)=>e.transaction.id),reopened:before.match.isApproved,linked:false,ledgerEffect:'none',reasoning:a.reasoning};
  }));
 }catch(e){return errorResult(e);}}
