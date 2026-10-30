@@ -11,8 +11,8 @@ const cents=(n:any)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0||Math.ab
 async function evidence(read:BillyClient,org:string,transactionId:string,bank:any){
  id.parse(transactionId);const {transaction}=await read.get('/transactions/'+transactionId);
  if(transaction?.id!==transactionId||transaction.organizationId!==org||transaction.isVoid||transaction.isVoided||!/^daybookTransaction:[A-Za-z0-9_-]{1,100}$/.test(transaction.originatorReference))throw new NoWriteError('Expected active test daybook transaction');
- const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],org);validate(source,'approved');
- const ledger=await posted(read,org,source);if(ledger.transaction.id!==transactionId)throw new NoWriteError('Wrong native transaction');
+ const source=await draftSnapshot(read,transaction.originatorReference.split(':')[1],org);validate(source,'approved',true);
+ const ledger=await posted(read,org,source,transaction);if(ledger.transaction.id!==transactionId)throw new NoWriteError('Wrong native transaction');
  const legs=ledger.postings.filter((p:any)=>p.accountId===bank.account.id);
  if(legs.length!==1||legs[0].currencyId!=='DKK'||legs[0].side!==bank.bankLine.side||cents(legs[0].amount)!==cents(bank.bankLine.amount)||typeof legs[0].isBankMatched!=='boolean')throw new NoWriteError('Expected exactly one bank posting with identical amount and side');
  return {source,...ledger,bankPosting:legs[0]};
