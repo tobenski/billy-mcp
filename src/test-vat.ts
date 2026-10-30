@@ -5,6 +5,13 @@ const validId=(id:any)=>z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).parse(id);
 export const euSalesTags=new Set(['s_dk_eu_goods_rubrik_b','s_dk_eu_services']);
 export const euPurchaseTags=new Set(['p_dk_eu_goods_full','p_dk_eu_services_full']);
 export const reverseChargeTags=new Set([...euPurchaseTags,'p_dk_non_eu_services_full','p_dk_reverse_full']);
+export const additionalZeroVat=new Map<string,{group:string;purchase:boolean;meta:string|null}>([
+ ['s_dk_non_eu_goods',{group:'world',purchase:false,meta:'dk_rubrik_c_all'}],
+ ['s_dk_non_eu_services',{group:'world',purchase:false,meta:'dk_rubrik_c_all'}],
+ ['s_dk_0',{group:'local',purchase:false,meta:'dk_rubrik_c_all'}],
+ ['s_dk_vat_exempt',{group:'local',purchase:false,meta:null}],
+ ['p_dk_no_deduction',{group:'local',purchase:true,meta:null}],
+]);
 export const representationTag='p_dk_representation_full';
 export const importGoodsTag='p_dk_non_eu_goods_full';
 export async function standardVatRates(read:BillyClient,orgId:string,lines:any[]){
@@ -14,24 +21,25 @@ export async function standardVatRates(read:BillyClient,orgId:string,lines:any[]
  let metaFields:any[]|undefined;const accounts=new Map<string,any>();
  for(const taxId of taxIds){
  const rate=rates.find((r:any)=>r.id===taxId);
+ const additional=additionalZeroVat.get(rate?.predefinedTag);
  const representation=rate?.predefinedTag===representationTag;
  const euSale=euSalesTags.has(rate?.predefinedTag),eu=euSale||euPurchaseTags.has(rate?.predefinedTag),reverse=reverseChargeTags.has(rate?.predefinedTag),importGoods=rate?.predefinedTag===importGoodsTag;
- const zero=reverse||importGoods||euSale;const group=eu?'eu':rate?.predefinedTag?.startsWith('p_dk_non_eu_')?'world':'local';
+ const zero=reverse||importGoods||euSale||!!additional;const group=additional?.group??(eu?'eu':rate?.predefinedTag?.startsWith('p_dk_non_eu_')?'world':'local');
  if(!rate||rate.organizationId!==orgId||rate.isActive!==true||rate.isPredefined!==true||rate.rate!==(zero?0:0.25)||rate.taxRateGroup!==group||(!zero&&!['p_dk_25','s_dk_25',representationTag].includes(rate.predefinedTag))||rate.isMissingStandardTaxRate!==false)throw new NoWriteError('Only supported purchase VAT, EU sales and standard Danish VAT codes are supported');
- const purchase=!euSale&&(zero||representation||rate.predefinedTag==='p_dk_25');
+ const purchase=additional?.purchase??(!euSale&&(zero||representation||rate.predefinedTag==='p_dk_25'));
  if(rate.appliesToPurchases!==purchase||rate.appliesToSales!==!purchase)throw new NoWriteError('Unexpected VAT applicability');
- if(eu){
+ if(eu||additional?.meta){
  validId(rate.netAmountMetaFieldId);
  metaFields??=await read.fetchAll('/salesTaxMetaFields','salesTaxMetaFields',{organizationId:orgId});
  const field=metaFields.find(f=>f.id===rate.netAmountMetaFieldId);
- const expected=euSale?(rate.predefinedTag==='s_dk_eu_goods_rubrik_b'?'dk_rubrik_b_goods':'dk_rubrik_b_services'):(rate.predefinedTag==='p_dk_eu_goods_full'?'dk_rubrik_a_goods':'dk_rubrik_a_services');
- if(field?.organizationId!==orgId||field.isPredefined!==true||field.predefinedTag!==expected)throw new NoWriteError('EU VAT requires correct native Rubrik A/B mapping');
+ const expected=additional?.meta??(euSale?(rate.predefinedTag==='s_dk_eu_goods_rubrik_b'?'dk_rubrik_b_goods':'dk_rubrik_b_services'):(rate.predefinedTag==='p_dk_eu_goods_full'?'dk_rubrik_a_goods':'dk_rubrik_a_services'));
+ if(field?.organizationId!==orgId||field.isPredefined!==true||field.predefinedTag!==expected)throw new NoWriteError('VAT code requires correct native Rubrik A/B/C mapping');
  }
- if((zero&&!eu||representation)&&rate.netAmountMetaFieldId!=null)throw new NoWriteError('This purchase VAT code must not map to a turnover reporting field');
+ if((zero&&!eu&&!additional?.meta||representation)&&rate.netAmountMetaFieldId!=null)throw new NoWriteError('This purchase VAT code must not map to a turnover reporting field');
  const components=await read.fetchAll('/taxRateDeductionComponents','taxRateDeductionComponents',{taxRateId:taxId});
  if(reverse){
  if(components.length!==2||components.some((c:any)=>c.taxRateId!==taxId||c.source!=='netAmount')||components.filter((c:any)=>c.share===0.25).length!==1||components.filter((c:any)=>c.share===-0.25).length!==1||components[0].accountId===components[1].accountId)throw new NoWriteError('Reverse-charge purchases require full +25%/-25% netAmount components');
- }else if(euSale){if(components.length!==0)throw new NoWriteError('EU sales require zero VAT deduction components');}
+ }else if(euSale||additional){if(components.length!==0)throw new NoWriteError('This zero VAT code requires zero deduction components');}
  else if(importGoods){if(components.length!==0)throw new NoWriteError('Non-EU goods invoice must not calculate import VAT; use separate import specification');}
  else if(components.length!==1||components[0].taxRateId!==taxId||components[0].source!=='tax'||components[0].share!==(representation?0.25:1))throw new NoWriteError('Unexpected standard or representation VAT deduction component');
  for(const component of components){
@@ -55,7 +63,7 @@ export function verifyVatPostings(lines:any[],postings:any[],rates:any[]){
  const gross=cents(line.amount);
  if(!line.taxRateId){expected.push(line);continue;}
  const rate=rates.find(r=>r.id===line.taxRateId);if(!rate)throw new Error('Missing verified VAT configuration');
- if(rate.predefinedTag===importGoodsTag||euSalesTags.has(rate.predefinedTag)){expected.push({...line});continue;}
+ if(rate.predefinedTag===importGoodsTag||euSalesTags.has(rate.predefinedTag)||additionalZeroVat.has(rate.predefinedTag)){expected.push({...line});continue;}
  if(reverseChargeTags.has(rate.predefinedTag)){
  expected.push({...line});
  for(const c of rate.deductionComponents)expected.push({...line,accountId:c.accountId,amount:Math.round(gross/4)/100,side:c.share>0?line.side:line.side==='debit'?'credit':'debit',salesTaxReturnId:'expected'});
