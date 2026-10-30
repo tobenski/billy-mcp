@@ -14,9 +14,9 @@ export function validate(snapshot:any,state:string){
  if(snapshot.daybookTransactionLines.length<2||snapshot.daybookTransactionLines.length>50)throw new NoWriteError('Expected 2 to 50 lines');
  let balance=0;for(const l of snapshot.daybookTransactionLines){id.parse(l.accountId);if(l.currencyId!=='DKK'||l.taxRateId||l.contraTaxRateId||l.contraAccountId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['debit','credit'].includes(l.side))throw new NoWriteError('Only DKK without tax or linked payments supported');balance+=money(l.amount)*(l.side==='debit'?1:-1);}if(balance!==0)throw new NoWriteError('Unbalanced entry');
 }
-export async function posted(read:BillyClient,orgId:string,snapshot:any){
+export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTransaction?:any){
  const ref='daybookTransaction:'+snapshot.daybookTransaction.id;
- const all=await read.fetchAll('/transactions','transactions',{organizationId:orgId});
+ const all=knownTransaction?[knownTransaction]:await read.fetchAll('/transactions','transactions',{organizationId:orgId});
  const txs=all.filter((t:any)=>t.originatorReference===ref&&!t.isVoided&&!t.isVoid);
  if(txs.length!==1||txs[0].organizationId!==orgId)throw new Error('Expected exactly one posted native transaction');
  const transaction=txs[0];id.parse(transaction.id);
@@ -26,11 +26,12 @@ export async function posted(read:BillyClient,orgId:string,snapshot:any){
 }
 export const finalizeDescriptions:Record<string,string>={
  book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft without VAT. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
- approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against exactly one already-booked test entry. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
+ approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against a booked test entry or an original/correction pair with 2-3 complete bank posting associations and an exact signed net. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
 };
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
  const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
  const booking=name==='book_test_daybook_draft';id.parse(booking?a.daybookTransactionId:a.matchId);
+ if(!booking){const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:a.matchId});if(links.some((l:any)=>l.matchId!==a.matchId))throw new NoWriteError('Unexpected match association');if(links.length>1){const {correctionGroupApprove}=await import('./test-bank-correction-group.js');return correctionGroupApprove(read,write,db,orgId,a);}}
  return jsonResult(await journalRun(db,orgId,a.operationId,booking?a.daybookTransactionId:'bankmatch:'+a.matchId,{action:name,...a},async()=>{
  let before:any,bank:any,ledger:any;
  try{
