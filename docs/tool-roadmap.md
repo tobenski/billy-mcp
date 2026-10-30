@@ -1548,3 +1548,7 @@ Momsudvidelse: book_test_daybook_draft understøtter standard dansk 25 % moms; p
 EU-køb med fuldt fradrag: kladder, bogføring, to momsben, Rubrik A, tilbageførsel og enkeltpost-bankafstemning er implementeret og live-testet. Fortsat kun DKK. Se [EU-køb](eu-purchase-vat.md).
 
 Ydelser uden for EU, dansk omvendt betalingspligt og ikke-EU-varefakturaer understøttes nu med fuldt fradrag i DKK. Importmoms angives separat fra importspecifikationen via eksisterende kladdeværktøjer. Se [test og afgrænsning](non-eu-and-domestic-vat.md).
+
+### EU-salg, 30. oktober 2026
+
+SVE og SYE er nu implementeret i de eksisterende kladde-, bogførings-, fulde tilbageførsels- og enkeltpost-bankværktøjer. Native Rubrik B-validering, 230 beståede tests og live-test med neutraliserede bogføringer er beskrevet i [EU-salgspakken](eu-sales-vat.md). Separat EU-salgsoversigt kræver et senere fakturaforløb og er ikke dækket af kladdetesten.
