@@ -89,6 +89,53 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
       return {alreadyLinked:false,attachment:checked.attachment,fileId:file.fileId};
     });
   }));
+  server.registerTool('reuse_test_inbox_attachment',{
+    description:'Reuse the file from an unhandled inbox attachment on a test-tool-created draft. Adds a verified association, preserves the original inbox attachment and existing draft attachments, and never uploads another file. Does not consume or move the inbox item.',
+    inputSchema:z.object({operationId:uuid,attachmentId:id,daybookTransactionId:id,expectedDescription:z.string()}).strict(),
+    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true},
+  },wrap(async({operationId,attachmentId,daybookTransactionId,expectedDescription})=>{
+    await identity();const ownerReference='daybookTransaction:'+daybookTransactionId;
+    return journalRun(db,orgId,operationId,daybookTransactionId,{action:'reuse_inbox',attachmentId,daybookTransactionId,expectedDescription},async()=>{
+      const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
+      if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:')||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
+      const {attachment:source}=await read.get('/attachments/'+attachmentId);
+      if(source?.organizationId!==orgId||source.ownerReference||!id.safeParse(source.fileId).success)throw new NoWriteError('Source must be an unhandled attachment in the test organization');
+      const before=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
+      if(before.some((a:any)=>a.ownerReference!==ownerReference))throw new NoWriteError('Unexpected attachment owner');
+      const prior=before.find((a:any)=>a.fileId===source.fileId);
+      if(prior)return{alreadyLinked:true,attachment:prior,sourceAttachmentId:attachmentId,inboxPreserved:true};
+      const result=await write.post('/attachments',{attachment:{organizationId:orgId,ownerReference,fileId:source.fileId}});
+      const link=result.attachments?.find((a:any)=>a.ownerReference===ownerReference&&a.fileId===source.fileId);
+      if(!id.safeParse(link?.id).success)throw new Error('Missing association');
+      const after=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
+      const checked=after.find((a:any)=>a.id===link.id&&a.fileId===source.fileId&&a.ownerReference===ownerReference);
+      if(!checked||before.some((a:any)=>!after.some((b:any)=>a.id===b.id)))throw new Error('Attachment verification failed');
+      const inbox=await read.get('/attachments/'+attachmentId);
+      if(inbox.attachment?.ownerReference||inbox.attachment?.fileId!==source.fileId)throw new Error('Inbox source changed');
+      return{alreadyLinked:false,attachment:checked,sourceAttachmentId:attachmentId,inboxPreserved:true};
+    });
+  }));
+  server.registerTool('remove_test_draft_attachment',{
+    description:'Delete one attachment association from a test-tool-created draft, retaining the file and all other associations. Does not recreate an inbox item. Requires current draft description and exact attachment ID; persisted operation UUID prevents repeated deletion.',
+    inputSchema:z.object({operationId:uuid,attachmentId:id,daybookTransactionId:id,expectedDescription:z.string()}).strict(),
+    annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:true},
+  },wrap(async({operationId,attachmentId,daybookTransactionId,expectedDescription})=>{
+    await identity();const ownerReference='daybookTransaction:'+daybookTransactionId;
+    return journalRun(db,orgId,operationId,daybookTransactionId,{action:'remove_attachment',attachmentId,daybookTransactionId,expectedDescription},async()=>{
+      const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
+      if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:')||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
+      const {attachment}=await read.get('/attachments/'+attachmentId);
+      if(attachment?.organizationId!==orgId||attachment.ownerReference!==ownerReference||!id.safeParse(attachment.fileId).success)throw new NoWriteError('Attachment does not belong to this test draft');
+      const before=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
+      if(before.some((a:any)=>a.ownerReference!==ownerReference)||!before.some((a:any)=>a.id===attachmentId))throw new NoWriteError('Unexpected attachment list');
+      await write.del('/attachments/'+attachmentId);
+      const after=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
+      if(after.some((a:any)=>a.id===attachmentId)||before.filter((a:any)=>a.id!==attachmentId).some((a:any)=>!after.some((b:any)=>b.id===a.id)))throw new Error('Removal readback failed');
+      const file=await read.get('/files/'+attachment.fileId);
+      if(file.file?.id!==attachment.fileId)throw new Error('Retained file verification failed');
+      return{removedAttachmentId:attachmentId,fileId:attachment.fileId,fileRetained:true,remainingAttachments:after};
+    });
+  }));
   server.registerTool('download_test_file',{
     description:'Download and hash-check bytes from a completed test upload. Default returns verification and metadata only. includeContent returns a base64 chunk (max 65536 bytes) at offset; follow nextOffset to reconstruct the file. API credentials are never sent to download hosts.',
     inputSchema:z.object({uploadOperationId:uuid,includeContent:z.boolean().default(false),offset:z.number().int().min(0).default(0),chunkSize:z.number().int().min(1).max(65536).default(65536)}).strict(),
