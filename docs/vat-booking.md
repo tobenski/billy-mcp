@@ -1,6 +1,6 @@
 # Momsbogføring og fuld tilbageførsel i testregnskabet
 
-Implementeret og live-testet 2026-10-30. 220 automatiske tests består. Samme værktøjer og inputskemaer; ingen nye værktøjer.
+Implementeret og live-testet 2026-10-30. 222 automatiske tests består. Samme værktøjer og inputskemaer; ingen nye værktøjer.
 
 ## Kontrakt
 
@@ -25,7 +25,7 @@ Salgstesten kørte med den endelige kontrol af momskode og momsperiodereference.
 
 ## Afgrænsning
 
-Kun standard dansk 25 %, fuldt fradrag og DKK. Nettobeløbsinput, EU-moms, omvendt betalingspligt og delvist fradrag understøttes ikke. Bogføring af kladder med moms betyder ikke, at bankafstemning af disse poster er understøttet. Erstatningsrettelser og korrektion af korrektionsposter med moms er heller ikke understøttet.
+Kun standard dansk 25 %, fuldt fradrag og DKK. Nettobeløbsinput, EU-moms, omvendt betalingspligt og delvist fradrag understøttes ikke. Bankafstemning af én bogført momspost er nu implementeret; se [match, godkendelse og genåbning](vat-bank-matching.md). Momskladder før bogføring og grupper af original/korrektion med moms er ikke understøttet af bankværktøjerne. Erstatningsrettelser og korrektion af korrektionsposter med moms er heller ikke understøttet.
 
 Samme-dato-tilbageførsel er live-testet. Tilbageførsel i en anden momsperiode, lukkede perioder og ændring af indsendte momsangivelser er ikke valideret i denne pakke. Periodereferencens tilstedeværelse kontrolleres; værktøjet hævder ikke at have valideret en komplet momsangivelse. Samtidige UI-/opsætningsændringer kan stadig medføre readback-fejl.
 
