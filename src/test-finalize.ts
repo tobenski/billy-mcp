@@ -1,3 +1,4 @@
+import {standardVatRates,verifyVatPostings} from './test-vat.js';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
 import {draftSnapshot} from './test-extended-drafts.js';
@@ -7,25 +8,29 @@ import * as z from 'zod/v4';
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const stable=(v:any):string=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
 const money=(n:any)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0||n>1000000||Math.abs(n*100-Math.round(n*100))>1e-7)throw new NoWriteError('Invalid two-decimal amount');return Math.round(n*100);};
-const financial=(rows:any[])=>rows.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,currencyId:l.currencyId,text:l.text??''})).sort();
-export function validate(snapshot:any,state:string){
+const financial=(rows:any[])=>rows.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,currencyId:l.currencyId,text:l.text??'',taxRateId:l.taxRateId??null})).sort();
+export function validate(snapshot:any,state:string,allowVat=false){
  const h=snapshot.daybookTransaction;
  if(h.state!==state||!h.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Expected a test-tool-created '+state+' entry');
  if(snapshot.daybookTransactionLines.length<2||snapshot.daybookTransactionLines.length>50)throw new NoWriteError('Expected 2 to 50 lines');
- let balance=0;for(const l of snapshot.daybookTransactionLines){id.parse(l.accountId);if(l.currencyId!=='DKK'||l.taxRateId||l.contraTaxRateId||l.contraAccountId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['debit','credit'].includes(l.side))throw new NoWriteError('Only DKK without tax or linked payments supported');balance+=money(l.amount)*(l.side==='debit'?1:-1);}if(balance!==0)throw new NoWriteError('Unbalanced entry');
+ let balance=0;for(const l of snapshot.daybookTransactionLines){id.parse(l.accountId);if(l.currencyId!=='DKK'||(!allowVat&&l.taxRateId)||l.contraTaxRateId||l.contraAccountId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['debit','credit'].includes(l.side))throw new NoWriteError('Only DKK without tax or linked payments supported');balance+=money(l.amount)*(l.side==='debit'?1:-1);}if(balance!==0)throw new NoWriteError('Unbalanced entry');
 }
-export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTransaction?:any){
+export async function posted(read:BillyClient,orgId:string,snapshot:any,knownTransaction?:any,taxRates?:any[]){
  const ref='daybookTransaction:'+snapshot.daybookTransaction.id;
  const all=knownTransaction?[knownTransaction]:await read.fetchAll('/transactions','transactions',{organizationId:orgId});
  const txs=all.filter((t:any)=>t.originatorReference===ref&&!t.isVoided&&!t.isVoid);
  if(txs.length!==1||txs[0].organizationId!==orgId)throw new Error('Expected exactly one posted native transaction');
  const transaction=txs[0];id.parse(transaction.id);
  const postings=await read.fetchAll('/postings','postings',{organizationId:orgId,transactionId:transaction.id});
- if(postings.some((p:any)=>p.transactionId!==transaction.id||p.organizationId!==orgId||p.isVoided||p.entryDate!==snapshot.daybookTransaction.entryDate)||stable(financial(postings))!==stable(financial(snapshot.daybookTransactionLines)))throw new Error('Native posted lines differ from approved entry');
+ if(postings.some((p:any)=>p.transactionId!==transaction.id||p.organizationId!==orgId||p.isVoided||p.entryDate!==snapshot.daybookTransaction.entryDate))throw new Error('Native posting ownership/date mismatch');
+ if(snapshot.daybookTransactionLines.some((l:any)=>l.taxRateId)){
+ const rates=taxRates??await standardVatRates(read,orgId,snapshot.daybookTransactionLines);
+ verifyVatPostings(snapshot.daybookTransactionLines,postings,rates);
+ }else if(stable(financial(postings))!==stable(financial(snapshot.daybookTransactionLines)))throw new Error('Native posted lines differ from approved entry');
  return{transaction,postings};
 }
 export const finalizeDescriptions:Record<string,string>={
- book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft without VAT. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
+ book_test_daybook_draft:'Phase 1: explicitly book a test-tool-created balanced DKK draft with no VAT or standard Danish 25% VAT. Verifies native net/tax split in integer cents; VAT bank matching remains unsupported. Requires revision and current description from get_daybook_transaction. Preserves lines/files and verifies native transaction/postings. Irreversible via draft tools; reasoning recorded in operation journal.',
  approve_test_bank_match:'Phase 1: explicitly approve one unapproved single-line DKK bank match against a booked test entry or an original/correction pair with 2-3 complete bank posting associations and an exact signed net. Accepts a daybook/transaction subject or its exact native bank posting association. Revalidates amount, side, account, native postings and revisions. No draft auto-booking, fees, split payments or differences. expectedRevision from get_test_bank_line.',
 };
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
@@ -33,10 +38,10 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  const booking=name==='book_test_daybook_draft';id.parse(booking?a.daybookTransactionId:a.matchId);
  if(!booking){const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:a.matchId});if(links.some((l:any)=>l.matchId!==a.matchId))throw new NoWriteError('Unexpected match association');if(links.length>1){const {correctionGroupApprove}=await import('./test-bank-correction-group.js');return correctionGroupApprove(read,write,db,orgId,a);}}
  return jsonResult(await journalRun(db,orgId,a.operationId,booking?a.daybookTransactionId:'bankmatch:'+a.matchId,{action:name,...a},async()=>{
- let before:any,bank:any,ledger:any;
+ let before:any,bank:any,ledger:any;let taxRates:any[]=[];
  try{
  if(booking){
- before=await draftSnapshot(read,a.daybookTransactionId,orgId);validate(before,'draft');
+ before=await draftSnapshot(read,a.daybookTransactionId,orgId);validate(before,'draft',true);taxRates=await standardVatRates(read,orgId,before.daybookTransactionLines);
  if(before.revision!==a.expectedRevision||before.daybookTransaction.description!==a.expectedDescription)throw new NoWriteError('STALE_REVISION or description; read draft again');
  for(const accountId of new Set(before.daybookTransactionLines.map((l:any)=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');}
  }else{
@@ -68,9 +73,9 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Finalization preflight failed. No write performed.');}
  if(booking)await write.put('/daybookTransactions/'+a.daybookTransactionId,{daybookTransaction:{state:'approved'}});
  else await write.put('/bankLineMatches/'+a.matchId,{bankLineMatch:{isApproved:true}});
- const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved');
+ const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved',booking);
  if(stable(financial(after.daybookTransactionLines))!==stable(financial(before.daybookTransactionLines))||stable(after.attachments)!==stable(before.attachments)||after.daybookTransaction.entryDate!==before.daybookTransaction.entryDate||after.daybookTransaction.description!==before.daybookTransaction.description)throw new Error('Entry or attachments changed during finalization');
- const verified=await posted(read,orgId,after);
+ const verified=await posted(read,orgId,after,undefined,booking?taxRates:undefined);
  if(booking){
  if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before);}
  return{...after,...verified,reasoning:a.reasoning};
