@@ -66,8 +66,8 @@ export function billBookingHandler(reader:BillyClient,write:BillyClient,db:Journ
  z.string().uuid().parse(a.operationId);z.string().min(1).parse(a.expectedRevision);z.string().min(1).max(4000).parse(a.reasoning);const book=name==='book_test_bill_draft';if(!billBookingDescriptions[name])throw new NoWriteError('Unknown action');id.parse(book?a.id:a.billId);
  const {organization}=await read.get('/organization');if(organization?.id!==org||organization.baseCurrencyId!=='DKK')throw new NoWriteError('Organization mismatch');
  const fingerprint=canonical({action:name,...a}),target=org+':bill:'+(book?a.id:a.billId),journalId=org+':'+a.operationId;
- const pending=await db.prepare('SELECT fingerprint, state, result, target FROM operations WHERE id = ?').bind(journalId).first<any>();
- if(!book&&pending?.state==='pending'){
+ const pending=await db.prepare('SELECT fingerprint, state, result, target'+(db.guardedWrites?', write_phase':'')+' FROM operations WHERE id = ?').bind(journalId).first<any>();
+ if(!book&&pending?.state==='pending'&&pending.write_phase!=='prepared'){
  if(pending.fingerprint!==fingerprint||pending.target!==target)throw Error('Pending credit input mismatch');
  const saved=JSON.parse(pending.result??'null');if(saved?.stage!=='before_bill_credit_creation'||saved.before?.revision!==a.expectedRevision||!saved.payload||!saved.configuration)throw Error('No preserved credit creation evidence');
  const source=await billSnapshot(read,org,a.billId);if(source.revision!==a.expectedRevision)throw Error('Credit source changed; reservation retained');
@@ -82,7 +82,7 @@ export function billBookingHandler(reader:BillyClient,write:BillyClient,db:Journ
  if((await billSnapshot(read,org,a.billId)).revision!==source.revision||(await billSnapshot(read,org,b.id)).revision!==after.revision)throw Error('Credit/source changed during recovery');
  const result={...after,sourceBillId:a.billId,reasoning:a.reasoning,booked:false,recovery:{nativeWrites:0}};const r=await db.prepare("UPDATE operations SET state = 'complete', result = ? WHERE id = ? AND state = 'pending' AND fingerprint = ? AND target = ?").bind(JSON.stringify(result),journalId,fingerprint,target).run();if(!r.success||r.meta.changes!==1)throw Error('Journal changed during credit recovery');return jsonResult({operationId:a.operationId,replayed:false,result});
  }
- if(book&&pending?.state==='pending'){
+ if(book&&pending?.state==='pending'&&pending.write_phase!=='prepared'){
  if(pending.fingerprint!==fingerprint||pending.target!==target)throw Error('Pending booking input mismatch');const saved=JSON.parse(pending.result??'null');if(saved?.stage!=='before_bill_booking'||saved.before.revision!==a.expectedRevision)throw Error('No recoverable bill evidence');
  const after=await billSnapshot(read,org,a.id);
  if(after.bill.state==='draft'&&saved.diagnostic?.kind==='billy_http'&&saved.diagnostic.method==='PUT'&&saved.diagnostic.resource==='bills'&&[400,422].includes(saved.diagnostic.httpStatus)){
