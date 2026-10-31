@@ -1,3 +1,5 @@
+> Live acceptance completed: see [document payments and supplier acceptance](document-payments.md). The remaining text records the preceding deployment checkpoint.
+
 # Supplier correction lifecycle and missing payment contracts — 2026-10-31
 
 ## Current state
