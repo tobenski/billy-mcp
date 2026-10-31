@@ -1,3 +1,4 @@
+import {manualDraftAllowed,expandManualDkkLines} from './test-manual-corrections.js';
 import {isSplitMatch,splitBankHandler} from './test-bank-allocations.js';
 import {assertBookingDateOpen,assertVatPeriodsOpen} from './test-period-guard.js';
 import {isForeignCurrency,foreignCurrencies} from './test-currency.js';
@@ -53,12 +54,12 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  const booking=name==='book_test_daybook_draft';id.parse(booking?a.daybookTransactionId:a.matchId);
  if(!booking){const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:a.matchId});if(links.some((l:any)=>l.matchId!==a.matchId))throw new NoWriteError('Unexpected match association');if(links.length>1){if(await isSplitMatch(read,db,orgId,a.matchId))return splitBankHandler(read,write,db,orgId,name)(a);const {correctionGroupApprove}=await import('./test-bank-correction-group.js');return correctionGroupApprove(read,write,db,orgId,a);}}
  return jsonResult(await journalRun(db,orgId,a.operationId,booking?a.daybookTransactionId:'bankmatch:'+a.matchId,{action:name,...a},async()=>{
- let before:any,bank:any,ledger:any,knownTransaction:any;let taxRates:any[]=[];
+ let before:any,rawBefore:any,bank:any,ledger:any,knownTransaction:any;let manual=false;let taxRates:any[]=[];
  try{
  if(booking){
- before=await draftSnapshot(read,a.daybookTransactionId,orgId);assertBookingDateOpen(organization,before.daybookTransaction.entryDate);validate(before,'draft',true,true);taxRates=await standardVatRates(read,orgId,before.daybookTransactionLines);
+ rawBefore=await draftSnapshot(read,a.daybookTransactionId,orgId);manual=manualDraftAllowed(read,orgId,rawBefore.daybookTransaction);before=manual?expandManualDkkLines(rawBefore):rawBefore;assertBookingDateOpen(organization,before.daybookTransaction.entryDate);validate(before,'draft',true,true,manual);taxRates=await standardVatRates(read,orgId,before.daybookTransactionLines);
  let affectsVat=taxRates.length>0;
- if(before.revision!==a.expectedRevision||before.daybookTransaction.description!==a.expectedDescription)throw new NoWriteError('STALE_REVISION or description; read draft again');
+ if(before.revision!==a.expectedRevision||(before.daybookTransaction.description??'')!==a.expectedDescription)throw new NoWriteError('STALE_REVISION or description; read draft again');
  for(const accountId of new Set(before.daybookTransactionLines.map((l:any)=>l.accountId))){const {account}=await read.get('/accounts/'+accountId);if(account?.organizationId!==orgId||account.isArchived||account.currencyId&&account.currencyId!=='DKK')throw new NoWriteError('Invalid account');affectsVat ||= ['purchaseTax','salesTax','euTaxGoods','euTaxServices'].includes(account.systemRole);}
  if(affectsVat)assertVatPeriodsOpen(await read.fetchAll('/salesTaxReturns','salesTaxReturns',{organizationId:orgId},1000),orgId,before.daybookTransaction.entryDate);
  }else{
@@ -90,12 +91,13 @@ export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Finalization preflight failed. No write performed.');}
  if(booking)await write.put('/daybookTransactions/'+a.daybookTransactionId,{daybookTransaction:{state:'approved'}});
  else await write.put('/bankLineMatches/'+a.matchId,{bankLineMatch:{isApproved:true}});
- const after=await draftSnapshot(read,before.daybookTransaction.id,orgId);validate(after,'approved',true,true);
+ const rawAfter=await draftSnapshot(read,before.daybookTransaction.id,orgId);const after=manual?expandManualDkkLines(rawAfter):rawAfter;validate(after,'approved',true,true,manual);
+ if(manual&&(rawAfter.daybookTransaction.apiType!==rawBefore.daybookTransaction.apiType||stable(rawAfter.daybookTransactionLines)!==stable(rawBefore.daybookTransactionLines)))throw new Error('Manual source lines or origin changed during booking');
  if(stable(financial(after.daybookTransactionLines))!==stable(financial(before.daybookTransactionLines))||stable(after.attachments)!==stable(before.attachments)||after.daybookTransaction.entryDate!==before.daybookTransaction.entryDate||after.daybookTransaction.description!==before.daybookTransaction.description)throw new Error('Entry or attachments changed during finalization');
  const verified=await posted(read,orgId,after,booking?undefined:ledger.transaction,taxRates);
  if(booking){
  if(before.daybookTransaction.apiType?.startsWith('mcp-test:correction:')){const {verifyCorrection}=await import('./test-corrections.js');await verifyCorrection(read,db,orgId,before,taxRates);}
- return{...after,...verified,reasoning:a.reasoning};
+ return{...rawAfter,...verified,reasoning:a.reasoning};
  }
  const bankAfter=await bankSnapshot(read,orgId,bank.bankLine.id);
  if(bankAfter.match?.id!==a.matchId||bankAfter.match.isApproved!==true||bankAfter.bankLine.accountId!==bank.bankLine.accountId||bankAfter.bankLine.amount!==bank.bankLine.amount||bankAfter.bankLine.side!==bank.bankLine.side)throw new Error('Bank approval readback mismatch');
