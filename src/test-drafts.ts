@@ -100,7 +100,7 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
   }
   const wrap = (fn: (a: any) => Promise<unknown>) => async (args: any) => { try { return jsonResult(await fn(args)); } catch(e) { return errorResult(e); } };
   server.registerTool('get_test_write_operation', {
-    description: 'Inspect the persisted outcome of a test write and fresh native evidence for bank matches, document bookings/payments, daybook bookings and VAT operations. Saved result is historical; current observations never resolve pending state, release locks or authorize retry. Pending means in progress or uncertain; never retry it with a new ID.',
+    description: 'Inspect the persisted outcome of a test write and fresh native evidence for bank matches, document bookings/payments, marked credit-note creation candidates, daybook bookings and VAT operations. Saved result is historical; current observations never resolve pending state, release locks or authorize retry. Pending means in progress or uncertain; never retry it with a new ID.',
     inputSchema: z.object({ operationId }).strict(), annotations: { readOnlyHint: true },
   }, wrap(async ({operationId}) => {
     await identity();
