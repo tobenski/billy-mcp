@@ -1,3 +1,5 @@
+> Current continuation: [supplier corrections and missing payment contracts](supplier-booking-next.md). Supplier booking awaits live acceptance; three additional names require discovery refresh.
+
 > Latest: [invoice lifecycle acceptance](invoice-lifecycle.md), including product acceptance and fully offset invoice/credit booking.
 
 > Follow-up: [supplier drafts, contact archive and product dependency](document-lifecycle-progress.md). The report below records the preceding 108-tool batch, not the latest 111-tool state.
