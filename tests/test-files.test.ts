@@ -7,7 +7,7 @@ const uploadKey='55555555-5555-4555-8555-555555555555';
 const attachKey='66666666-6666-4666-8666-666666666666';
 const pdf=Buffer.from('%PDF-1.4\nSynthetic test fixture\n%%EOF');
 const args={operationId:uploadKey,fileName:'test.pdf',contentType:'application/pdf',base64:pdf.toString('base64')};
-function harness(options:{org?:string;state?:string;timeout?:boolean;fileSize?:number;expectedBytes?:Buffer}={}) {
+function harness(options:{org?:string;state?:string;timeout?:boolean;lostAttachment?:boolean;fileSize?:number;expectedBytes?:Buffer}={}) {
   const rows=new Map<string,any>(); const handlers:Record<string,any>={}; const schemas:Record<string,any>={};let writes=0;let linked:any=null;
   const db:any={prepare(sql:string){return{bind(...a:any[]){return{
     async first(){return rows.get(a[0])??null},async run(){
@@ -23,7 +23,7 @@ function harness(options:{org?:string;state?:string;timeout?:boolean;fileSize?:n
     if(path==='/files/file')return{file:{id:'file',fileSize:options.fileSize,downloadUrl:'https://download.billy.dk/test.pdf?token=synthetic'}};
     throw Error('Unexpected read '+path);
   },async fetchAll(){return linked?[linked]:[]}};
-  const write:any={async postBinary(path:string,bytes:Uint8Array,opts:any){writes++;assert.equal(path,'/files');assert.deepEqual(Buffer.from(bytes),options.expectedBytes??pdf);assert.equal(opts.organizationId,'org');if(options.timeout)throw Error('timeout');return{files:[{id:'file'}]};},async post(path:string,body:any){writes++;assert.equal(path,'/attachments');linked={id:'link',...body.attachment};return{attachments:[linked]};}};
+  const write:any={async postBinary(path:string,bytes:Uint8Array,opts:any){writes++;assert.equal(path,'/files');assert.deepEqual(Buffer.from(bytes),options.expectedBytes??pdf);assert.equal(opts.organizationId,'org');if(options.timeout)throw Error('timeout');return{files:[{id:'file'}]};},async post(path:string,body:any){writes++;assert.equal(path,'/attachments');linked={id:'link',...body.attachment};if(options.lostAttachment){options.lostAttachment=false;throw Error('Lost attachment response');}return{attachments:[linked]};}};
   registerTestFileTools({registerTool(name:string,config:any,handler:any){handlers[name]=handler;schemas[name]=config.inputSchema;}} as any,read,write,db,'org');
   return{async call(name:string,input:any){return handlers[name](schemas[name].parse(input));},writes:()=>writes,rows};
 }
@@ -139,4 +139,12 @@ test('PNG signature and stored metadata size remain mandatory for rewritten byte
  const f=t.mock.method(globalThis,'fetch',async()=>new Response(pngStored));
  for(const size of [undefined,999]){const h=harness({fileSize:size,expectedBytes:pngOriginal});assert.notEqual((await h.call('upload_test_file',pngArgs)).isError,true);assert.equal((await h.call('download_test_file',{uploadOperationId:uploadKey})).isError,true);}
  const h=harness({fileSize:4,expectedBytes:pngOriginal});assert.notEqual((await h.call('upload_test_file',pngArgs)).isError,true);f.mock.mockImplementation(async()=>new Response('oops'));assert.equal((await h.call('download_test_file',{uploadOperationId:uploadKey})).isError,true);
+});
+
+test('lost draft attachment response recovers the exact association without another native write',async()=>{
+ const h=harness({lostAttachment:true});await h.call('upload_test_file',args);
+ const input={operationId:attachKey,uploadOperationId:uploadKey,daybookTransactionId:'draft',expectedDescription:'test'};
+ assert.equal((await h.call('attach_test_file_to_draft',input)).isError,true);
+ const recovered=await h.call('attach_test_file_to_draft',input);assert.notEqual(recovered.isError,true,JSON.stringify(recovered));
+ assert.equal(JSON.parse(recovered.content[0].text).result.recovery.nativeWrites,0);assert.equal(h.writes(),2);
 });
