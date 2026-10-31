@@ -1,3 +1,5 @@
+> Update, 2026-10-31: the two native upload-link/OSS-report placeholders have now been removed. See [the renewed endpoint review](removed-native-placeholders.md). Reserved-contract and discovery counts below are historical.
+
 > Current scope: [partial payments and multiline checkpoint](partial-payments-multiline.md). Earlier counts and full-payment/single-line restrictions below are historical.
 
 > Latest audit: [historical rates, OSS configuration evidence and operation diagnostics](autonomous-final-audit.md). Two native contracts remain reserved with no user action requested.
