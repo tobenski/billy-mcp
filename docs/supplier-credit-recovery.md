@@ -1,6 +1,6 @@
 # Supplier credit creation recovery
 
-Credit creation now preserves the original bill snapshot, exact native payload and expected totals before the first native write. Repeating the same pending operation can complete its journal only when one uniquely marked native credit draft matches all preserved header, line, amount and attachment evidence. The source must retain its original revision; prior DKK credits and allocations are reverified. Foreign credits remain full-source only. Recovery performs zero native writes.
+Credit creation now preserves the original bill snapshot, exact native payload and expected totals before the first native write. Repeating the same pending operation can complete its journal only when one uniquely marked native credit draft matches all preserved header, line, amount and attachment evidence. The source must retain its original revision; prior DKK credits and allocations are reverified. Foreign credits follow the [exact partial-credit limits](foreign-partial-credits.md); multiline sources still require full credits. Recovery performs zero native writes.
 
 Missing, duplicate, changed, paid or incomplete records retain their pending reservation. The implementation never retries an uncertain native create.
 
