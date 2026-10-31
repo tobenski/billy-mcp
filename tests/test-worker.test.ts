@@ -190,3 +190,13 @@ test('known native report paths are allowed only beneath the verified organizati
  for(const kind of ['reports/trialBalance','reports/balanceSheet','reports/profitAndLoss','trialBalance.json','balanceSheet.json','incomeStatement.json']){const path='/organizations/'+TEST_ORGANIZATION_ID+'/'+kind;const r=await rpc('tools/call',{name:'billy_raw_request',arguments:{path}});assert.notEqual(r.result?.isError,true);assert.equal(JSON.parse(r.result.content[0].text).report.native,true);}
  assert.equal(paths.filter(p=>p.includes('/reports/')).length,3);
 });
+
+test('selected-call registration retains every native read tool and rejects unavailable writes',async t=>{
+  const {McpServer}=await import('@modelcontextprotocol/server');
+  const {READ_TOOLS}=await import('../src/worker-server.js');
+  const original=McpServer.prototype.registerTool;let registered:string[]=[];
+  t.mock.method(McpServer.prototype,'registerTool',function(this:any,...args:any[]){registered.push(args[0]);return (original as any).apply(this,args);});
+  t.mock.method(globalThis,'fetch',async()=>Response.json({organization:{id:TEST_ORGANIZATION_ID,baseCurrencyId:'DKK'}}));
+  for(const name of READ_TOOLS){registered=[];await rpc('tools/call',{name,arguments:{unknown:'invalid input'}});assert.deepEqual(registered,[name],name);}
+  registered=[];await rpc('tools/call',{name:'create_invoice',arguments:{}});assert.deepEqual(registered,[]);
+});
