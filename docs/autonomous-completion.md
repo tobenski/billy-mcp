@@ -1,3 +1,7 @@
+> Also completed: [VAT payment/refund lifecycle](vat-payment-lifecycle.md), including native void, period reopen and full fixture reversal.
+
+> Latest: [supplier acceptance and document payments](document-payments.md). Supplier booking/full credit and DKK invoice/bill payment/void are live-verified.
+
 > Current continuation: [supplier corrections and missing payment contracts](supplier-booking-next.md). Supplier booking awaits live acceptance; three additional names require discovery refresh.
 
 > Latest: [invoice lifecycle acceptance](invoice-lifecycle.md), including product acceptance and fully offset invoice/credit booking.
