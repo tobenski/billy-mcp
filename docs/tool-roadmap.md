@@ -1582,3 +1582,7 @@ SVU, SYU og SOB kræver nu native Rubrik C; SF og KF kræver ingen omsætningsru
 ### Delvist fradrag og blandet regression, 30. oktober 2026
 
 [Samlet testrapport](partial-deduction-and-mixed-vat.md): eksplicit bogføringsforløb for 23/37/50 % fradrag, alle 15 standardkoder i blandede kladder og 252 beståede tests. Egne procentmomskoder er ikke implementeret; procenter og beløb fastlægges i chatten. Syv-kode-tilbageførsler fik requestbudgetrettelser og en snæver journalgenopretning af nøjagtigt verificerede, allerede oprettede tilbageførselskladder uden native writes. Post 61-76 er neutraliseret; to historiske bogføringsoperationer står stadig pending som beskrevet i rapporten.
+
+### Separat bogført bankgebyr
+
+Eksisterende `fee`-input i splitafstemningen verificerer nu en komplet, særskilt bogført DKK-gebyrpostering mod native finansposteringer og bogføringsjournal. Link, godkendelse, ophævelse og tilbageførsel er testet i testregnskabet. Automatisk gebyrbogføring og gebyrer på dokumentbetalinger er ikke implementeret. Se [valideringen](bank-fee-allocation.md).
