@@ -1,3 +1,4 @@
+import {isForeignCurrency,sourceCurrencies} from './test-currency.js';
 import {standardVatRates} from './test-vat.js';
 import type {McpServer} from '@modelcontextprotocol/server';
 import type {BillyClient} from './billy-client.js';
@@ -25,18 +26,18 @@ function normalize(lines:any[]){
  validId(l.accountId);
  if(!Number.isFinite(l.amount)||l.amount<=0||l.amount>1000000||Math.abs(l.amount*100-Math.round(l.amount*100))>1e-7)throw new NoWriteError('Invalid amount; use positive amounts with at most two decimals');
  const currency=l.currencyId??'DKK';
- if(!['DKK','EUR'].includes(currency))throw new NoWriteError('Only DKK and explicit EUR draft amounts supported');
- if(currency==='EUR'){if(!Number.isFinite(l.baseAmount)||l.baseAmount<=0||l.baseAmount>1000000||Math.abs(l.baseAmount*100-Math.round(l.baseAmount*100))>1e-7)throw new NoWriteError('EUR drafts require positive two-decimal DKK baseAmount');}
+ if(!sourceCurrencies.includes(currency))throw new NoWriteError('Supported currencies: DKK, EUR, USD, GBP, SEK, NOK');
+ if(isForeignCurrency(currency)){if(!Number.isFinite(l.baseAmount)||l.baseAmount<=0||l.baseAmount>1000000||Math.abs(l.baseAmount*100-Math.round(l.baseAmount*100))>1e-7)throw new NoWriteError('Foreign-source drafts require positive two-decimal DKK baseAmount');}
  else if(l.baseAmount!==undefined&&l.baseAmount!==l.amount)throw new NoWriteError('DKK baseAmount must equal amount');
  if(l.taxRateId!=null){validId(l.taxRateId);if(l.amountBasis!=='gross')throw new NoWriteError('VAT lines require explicit amountBasis gross; net input is not supported');}
  if(l.amountBasis!==undefined&&l.amountBasis!=='gross')throw new NoWriteError('Only gross amountBasis is supported');
  if(l.text.length>100)throw new NoWriteError('Line text exceeds 100 characters');
- balance+=Math.round((currency==='EUR'?l.baseAmount:l.amount)*100)*(l.side==='debit'?1:-1);
- return{accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:currency,...(currency==='EUR'?{baseAmount:l.baseAmount}:{}),...(l.taxRateId!=null?{taxRateId:l.taxRateId}:{})};
+ balance+=Math.round((isForeignCurrency(currency)?l.baseAmount:l.amount)*100)*(l.side==='debit'?1:-1);
+ return{accountId:l.accountId,amount:l.amount,side:l.side,text:l.text,currencyId:currency,...(isForeignCurrency(currency)?{baseAmount:l.baseAmount}:{}),...(l.taxRateId!=null?{taxRateId:l.taxRateId}:{})};
  });
  if(balance!==0)throw new NoWriteError('Unbalanced draft');return result;
 }
-function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK',...(l.currencyId==='EUR'?{baseAmount:l.baseAmount}:{}),taxRateId:l.taxRateId??null})).sort();}
+function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK',...(isForeignCurrency(l.currencyId)?{baseAmount:l.baseAmount}:{}),taxRateId:l.taxRateId??null})).sort();}
 export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){
  return async(a:any)=>{try{
  const {organization:org}=await read.get('/organization');if(org?.id!==orgId||org.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
@@ -58,7 +59,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  before=await draftSnapshot(read,a.id,orgId);const h=before.daybookTransaction;
  if(h.state!=='draft'||!h.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Only test-tool-created drafts can be changed');
  if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_daybook_transaction again');
- if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!['DKK','EUR'].includes(l.currencyId)))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
+ if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!sourceCurrencies.includes(l.currencyId)))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
  }
  if(before)normalize(before.daybookTransactionLines.map((l:any)=>({...l,text:l.text??'',baseAmount:l.baseAmount??undefined,amountBasis:'gross'})));
  // Validate both existing and proposed tax codes, including header-only changes.
@@ -95,7 +96,7 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  for(const k of ['entryDate','description','voucherNo'])if(fields[k]!==undefined&&after.daybookTransaction[k]!==fields[k])throw new Error('Header readback mismatch');
  if(stable(comparable(after.daybookTransactionLines))!==stable(comparable(lines??before.daybookTransactionLines)))throw new Error('Line replacement readback mismatch');
  if(existing.some((x:any)=>!after.attachments.some((y:any)=>stable(x)===stable(y))))throw new Error('Existing attachment changed');
- return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['EUR drafts only: explicit gross DKK baseAmount; only ordinary Danish K/S VAT or no VAT; booking and full reversal supported, no bank matching. DKK; gross amounts only; supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes, EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping or no VAT. Zero-rate gross is the invoice amount; non-EU goods import VAT is separate and never inferred from the invoice.','Booking and reversal require separate explicit tools; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
+ return {...after,attachmentReuse,taxRates,amountBasis:'gross',reasoning:a.reasoning,limitations:['EUR drafts only: explicit gross DKK baseAmount; supported native standard VAT codes or no VAT; booking and full reversal supported; exact DKK bank posting matching supported. DKK; gross amounts only; supported Danish VAT (including predefined KR with one-quarter VAT deduction), full-deduction reverse-charge purchases, non-EU goods invoice codes, EU sales with native Rubrik B mapping, SVU/SYU/SOB with native Rubrik C mapping and SF/KF without turnover mapping or no VAT. Zero-rate gross is the invoice amount; non-EU goods import VAT is separate and never inferred from the invoice.','Booking and reversal require separate explicit tools; no linked payments.','Attachment IDs add existing files without moving source attachments; omitted or empty never removes links.','Draft and attachment writes are not atomic; partial failures remain pending.','Revision checks are optimistic; Billy UI changes are not atomically locked.']};
  }));
  }catch(e){return errorResult(e);}};
 }
