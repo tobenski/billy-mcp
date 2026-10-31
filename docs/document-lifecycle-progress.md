@@ -12,24 +12,16 @@ Bill lines currently require quantity 1, explicit gross amounts, no productId an
 
 Native bill tax fields must not be interpreted as final deductible ledger VAT. The mixed draft includes ordinary K and representation KR with full tax in the bill's tax field; deduction components are a separate posting concern. `book_test_bill_draft` stays reserved until posting verification and a complete correction/cleanup lifecycle are implemented. No approved bill was created during these tests.
 
-## Three additional implemented product contracts, awaiting live acceptance
+## Product contracts — live acceptance completed
 
-The previous twenty-contract audit missed the product dependency of sales invoices. Native invoice lines require a product; the test company currently has no products. The following tools are now implemented and unit-tested, but require discovery refresh before this chat can call them:
+Product create/update/archive/restore has now been verified live. Names/descriptions changed as requested, existing prices were preserved, and restore returned the exact pre-archive revision. The synthetic product remains as a reusable fixture. All 111 tool names are available; this batch adds implementations behind existing contracts and requires no new names.
 
-- `create_test_product`: TEST-prefixed name, explicit active DKK revenue account and organization-owned existing sales-tax ruleset. No inferred default prices.
-- `update_test_product`: change only supplied name/description/account/ruleset after revision and journal provenance checks; preserve all prices and unrelated fields.
-- `archive_test_product`: reversible archive/restore with the same ownership/revision checks, preserving prices.
+## Invoice lifecycle — latest batch
 
-`get_product` now supplies all native product prices and an optimistic revision in test-write mode. Test discovery contains 111 tools with writes enabled, 99 when disabled; production's original 51 read-only tools are unchanged. Product status explicitly says `implemented_live_test_pending`. The new product contracts are implementations awaiting live acceptance, not stubs claimed as complete.
-
-## Invoice preparation and remaining work
-
-The invoice schema was checked against native documentation. ProductId is required natively, line taxRate is read-only, invoice dueDate is derived from native payment terms, and entryDate/contact cannot simply be replaced on an existing invoice. An implementation must verify product revenue account and resolved tax code against the requested account/tax, convert the explicit due date into validated native payment terms, and preserve unsent state. It must not silently create products or send email/e-invoices.
-
-After product live acceptance, implement and test invoice drafts with known products, then invoice/bill booking and corrections before payment allocations. The sixteen remaining contracts from the original twenty stay reserved; historical exchange-rate, EU-sales-list and OSS reporting endpoints remain unverified. There is no claim that all accounting functionality is complete.
+See [invoice-lifecycle.md](invoice-lifecycle.md) for the full acceptance record. Invoice draft create/update/delete, native product/rule verification, stable revisions, single-line DKK booking and full linked credit notes are implemented and live-tested. EUR domestic and EU sales were verified at draft level only. Booking foreign invoices, partial credits, payment allocation, supplier bill booking, historical exchange-rate lookup, EU-sales lists and OSS remain outside the delivered phase.
 
 ## Validation and operation safety
 
-287 automated tests, TypeScript checking and the Worker build pass. The automated suite covers contact archive/restore, full bill draft lifecycle/replay, foreign rates, stale revisions, forged provenance, approved-state refusal, wrong contact/account/attachment ownership, uncertain create outcomes and unrelated-field drift. Product tests cover duplicate names, account/ruleset validation, stale price revisions, preserved prices, archive/restore, uncertain writes and pending locks.
+The preceding supplier/product package had 287 automated tests; the latest invoice package has 301 automated tests. TypeScript checking and Worker build also pass.  The automated suite covers contact archive/restore, full bill draft lifecycle/replay, foreign rates, stale revisions, forged provenance, approved-state refusal, wrong contact/account/attachment ownership, uncertain create outcomes and unrelated-field drift. Product tests cover duplicate names, account/ruleset validation, stale price revisions, preserved prices, archive/restore, uncertain writes and pending locks.
 
-All successful live operations in this batch use prefix `b20000`; fourteen operations completed and no synthetic supplier bill remains. Existing attachment files and nonfinancial fixtures remain. No financial ledger posting, real bank operation, production write or message was performed.
+All successful live operations in the preceding supplier batch use prefix `b20000`; fourteen operations completed and no synthetic supplier bill remains. Existing attachment files and nonfinancial fixtures remain. That supplier batch performed no financial ledger posting, real bank operation, production write or message. The later invoice batch has a fully offset approved invoice/credit pair, documented separately.
