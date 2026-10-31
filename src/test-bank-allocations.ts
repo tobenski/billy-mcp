@@ -1,0 +1,41 @@
+import type {BillyClient} from './billy-client.js';
+import {bankSnapshot} from './test-bank.js';
+import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
+import {canonical} from './test-vat-management.js';
+import {TEST_PAYMENT_ACCOUNT_ID} from './test-document-payments.js';
+import {jsonResult,errorResult} from './tools/helpers.js';
+import * as z from 'zod/v4';
+const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
+const cents=(x:any)=>{if(typeof x!=='number'||!Number.isFinite(x)||x<=0||Math.abs(x*100-Math.round(x*100))>1e-7)throw new NoWriteError('Positive two-decimal amount required');return Math.round(x*100);};
+const refs=(rows:any[])=>rows.map(x=>x.subjectReference).sort();
+const financial=(p:any)=>{const {isBankMatched,...rest}=p;return rest;};
+export const splitDescription='Link 2-3 complete journal-proven native DKK bank postings to one existing unapproved offline test-bank match. Explicit amount and side must equal every posting and signed total must equal bank line. No partial posting allocations or implicit fees; fee must be separately booked and included as a full posting. Approval and group unlink use existing tools. No ledger creation.';
+async function record(db:JournalDB,org:string,matchId:string){const row=await db.prepare("SELECT fingerprint, state, result FROM operations WHERE state='complete' AND target=? AND json_extract(fingerprint,'$.action')='reconcile_test_bank_allocations' ORDER BY created_at DESC, rowid DESC LIMIT 1").bind(org+':bankmatch:'+matchId).first<any>();return row?JSON.parse(row.result):null;}
+export async function isSplitMatch(read:BillyClient,db:JournalDB,org:string,matchId:string){const r=await record(db,org,matchId);if(!r)return false;const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId});return links.every(x=>x.matchId===matchId)&&canonical(refs(links))===canonical(refs(r.associations));}
+function supported(b:any){if(b.account.id!==TEST_PAYMENT_ACCOUNT_ID||b.account.organizationId==null||b.account.currencyId!=='DKK'||b.account.isArchived||!b.match||b.lines.length!==1||b.match.accountId!==b.account.id||b.match.amount!==b.bankLine.amount||b.match.side!==b.bankLine.side||b.match.differenceType||b.match.feeAccountId)throw new NoWriteError('Expected one offline DKK bank line without native fee/difference');}
+async function evidence(read:BillyClient,db:JournalDB,org:string,b:any,allocs:any[],matched:boolean){
+ if(allocs.length<2||allocs.length>3||new Set(allocs.map(x=>x.subjectReference)).size!==allocs.length)throw new NoWriteError('Supply 2-3 unique complete posting allocations');
+ const out:any[]=[];for(const a of allocs){const m=/^posting:([A-Za-z0-9_-]{1,100})$/.exec(a.subjectReference);if(!m)throw new NoWriteError('Only native posting references supported');const {posting:p}=await read.get('/postings/'+m[1]);if(p?.id!==m[1]||p.organizationId!==org||p.accountId!==b.account.id||p.currencyId!=='DKK'||p.isVoided||p.isBankMatched!==matched||cents(p.amount)!==cents(a.amount)||p.side!==a.side)throw new NoWriteError('Posting amount/account/state mismatch');
+ const {transaction:t}=await read.get('/transactions/'+id.parse(p.transactionId));if(t?.id!==p.transactionId||t.organizationId!==org||t.isVoided||t.isVoid)throw new NoWriteError('Invalid source transaction');
+ const row=await db.prepare("SELECT fingerprint, state, result FROM operations WHERE state='complete' AND (json_extract(result,'$.transaction.id')=? OR json_extract(result,'$.transactions[0].id')=?) ORDER BY created_at ASC, rowid ASC LIMIT 1").bind(t.id,t.id).first<any>();if(!row)throw new NoWriteError('Missing source booking/payment journal');const action=JSON.parse(row.fingerprint).action;if(!['book_test_daybook_draft','book_test_invoice_draft','book_test_bill_draft','record_test_invoice_payment','record_test_bill_payment','record_test_vat_payment'].includes(action))throw new NoWriteError('Unproven test posting');const saved=JSON.parse(row.result),old=saved.postings?.find((x:any)=>x.id===p.id);if(!old||canonical(financial(old))!==canonical(financial(p)))throw new NoWriteError('Posting differs from verified booking');out.push(p);
+ }
+ const sum=out.reduce((n,p)=>n+cents(p.amount)*(p.side==='debit'?1:-1),0);if(sum!==cents(b.bankLine.amount)*(b.bankLine.side==='debit'?1:-1))throw new NoWriteError('BANK_DIFFERENCE: complete postings do not equal bank line');return out;
+}
+async function verifyPostings(read:BillyClient,ps:any[],matched:boolean){for(const old of ps){const {posting:p}=await read.get('/postings/'+old.id);if(!p||canonical(financial(p))!==canonical(financial(old))||p.isBankMatched!==matched)throw Error('Posting changed during split reconciliation');}}
+export function splitBankHandler(read:BillyClient,write:BillyClient,db:JournalDB,org:string,name:string){return async(a:any)=>{try{
+ z.string().uuid().parse(a.operationId);z.string().min(1).parse(a.expectedRevision);z.string().min(1).max(4000).parse(a.reasoning);const link=name==='reconcile_test_bank_allocations',approve=name==='approve_test_bank_match';
+ let initial:any;if(link||!approve)initial=await bankSnapshot(read,org,id.parse(a.bankLineId));else{const saved=await record(db,org,id.parse(a.matchId));if(!saved)throw new NoWriteError('Missing split link provenance');initial=await bankSnapshot(read,org,saved.bankLine.id);}
+ const matchId=initial.match?.id;if(!matchId)throw new NoWriteError('Existing match required');
+ return jsonResult(await journalRun(db,org,a.operationId,'bankmatch:'+matchId,{action:name,...a},async()=>{
+ let before:any,ps:any[]=[];
+ try{before=await bankSnapshot(read,org,initial.bankLine.id);supported(before);if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read bank line');if(a.fee!==undefined)throw new NoWriteError('Book fee separately; supply complete bank posting');
+ let allocs=a.allocations;if(link){if(before.match.isApproved!==false||before.associations.length)throw new NoWriteError('Empty unapproved match required');}else{if(a.matchId!==matchId||!approve&&a.subjectReference!=='group:'+matchId)throw new NoWriteError('Explicit matching group required');const saved=await record(db,org,matchId);if(!saved||canonical(refs(saved.associations))!==canonical(refs(before.associations)))throw new NoWriteError('Split group changed');allocs=saved.allocations;if(approve&&before.match.isApproved!==false)throw new NoWriteError('Already approved');if(typeof before.match.isApproved!=='boolean')throw new NoWriteError('Unknown approval state');}
+ ps=await evidence(read,db,org,before,allocs,before.match.isApproved);await verifyPostings(read,ps,before.match.isApproved);if((await bankSnapshot(read,org,before.bankLine.id)).revision!==before.revision)throw new NoWriteError('Bank changed during preflight');
+ }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Split preflight failed; no write performed');}
+ if(link){for(const alloc of a.allocations)await write.post('/bankLineSubjectAssociations',{bankLineSubjectAssociation:{matchId,subjectReference:alloc.subjectReference}});}
+ else if(approve)await write.put('/bankLineMatches/'+matchId,{bankLineMatch:{isApproved:true}});
+ else{if(before.match.isApproved){await write.put('/bankLineMatches/'+matchId,{bankLineMatch:{isApproved:false}});const {bankLineMatch:m}=await read.get('/bankLineMatches/'+matchId);if(m?.id!==matchId||m.isApproved!==false)throw Error('Split reopen not verified');await verifyPostings(read,ps,false);}for(const a of before.associations)await write.del('/bankLineSubjectAssociations/'+id.parse(a.id));}
+ const after=await bankSnapshot(read,org,before.bankLine.id);if(after.match?.id!==matchId||after.match.isApproved!==approve||canonical(after.lines)!==canonical(before.lines))throw Error('Split bank readback mismatch');const expected=link?a.allocations:approve?before.associations:[];if(canonical(refs(after.associations))!==canonical(refs(expected)))throw Error('Split association readback mismatch');await verifyPostings(read,ps,approve);
+ return{...after,allocations:link?a.allocations:ps.map(p=>({subjectReference:'posting:'+p.id,amount:p.amount,side:p.side})),postings:ps,reasoning:a.reasoning,ledgerEffect:'none',requiresSeparateApproval:link,linked:link||approve};
+ }));
+ }catch(e){return errorResult(e);}};}
