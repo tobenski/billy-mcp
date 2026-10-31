@@ -4,7 +4,7 @@ const validId=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,10
 
 // Observations only: never complete a journal row, release a lock or retry a write.
 export async function inspectBankOperation(read:BillyClient,org:string,input:any){
- const actions=['reconcile_test_bank_line','unlink_test_bank_line','approve_test_bank_match'];
+ const actions=['reconcile_test_bank_line','unlink_test_bank_line','approve_test_bank_match','reconcile_test_bank_allocations'];
  if(!actions.includes(input?.action))return {supported:false,reason:'Current-state inspection is implemented for bank operations only.'};
  let lineId=input.bankLineId;
  if(input.action==='approve_test_bank_match'){
@@ -37,4 +37,38 @@ export async function inspectBankOperation(read:BillyClient,org:string,input:any
  const after=await bankSnapshot(read,org,lineId);
  return {supported:true,bank,associatedPostings:postings,observedState,bankStableDuringRead:after.revision===bank.revision,outcome:'undetermined',safeToRetry:false,
   limitations:['Current observations do not prove which operation caused them or whether all intended writes succeeded.','No journal state or lock was changed. Never retry a pending operation with a new ID.','Empty or partial associations do not identify removed postings; compare the saved preflight evidence.','Optimistic reads do not lock concurrent Billy changes.']};
+}
+
+
+// Read-only diagnostic evidence. No DB or writable client is accepted here.
+export async function inspectWriteOperation(read:BillyClient,org:string,input:any,saved:any=null){
+ const action=input?.action;
+ if(['reconcile_test_bank_line','unlink_test_bank_line','approve_test_bank_match','reconcile_test_bank_allocations'].includes(action))return inspectBankOperation(read,org,input);
+ const envelope=(e:any)=>({supported:true,...e,outcome:'undetermined',safeToRetry:false,journalChanged:false,limitations:['Current evidence does not prove which request caused a change.','Saved results are historical; no pending lock is released and no native write is repeated.']});
+ const checked=(value:any)=>{if(!validId(value))throw Error('Invalid saved subject ID');return value;};
+ if(action==='void_test_document_payment'||action==='create_test_fx_adjustment_draft'){
+  const {paymentSnapshot}=await import('./test-document-payments.js');const payment=await paymentSnapshot(read,org,checked(input.paymentId));return envelope({payment});
+ }
+ if(['book_test_invoice_draft','book_test_bill_draft','record_test_invoice_payment','record_test_bill_payment','create_test_credit_note_draft','create_test_bill_credit_note_draft'].includes(action)){
+  const kind=action.includes('bill')?'bill':'invoice',recordId=checked(input.id??input.billId??input.invoiceId);
+  const {invoiceSnapshot}=await import('./test-invoice-drafts.js');const {billSnapshot}=await import('./test-bill-drafts.js');const snapshot=()=>kind==='invoice'?invoiceSnapshot(read,org,recordId):billSnapshot(read,org,recordId);
+  const before:any=await snapshot(),reference=kind+':'+recordId;
+  const allocations=(await read.fetchAll('/balanceModifiers','balanceModifiers',{subjectReference:reference}));if(allocations.some(x=>x.subjectReference!==reference))throw Error('Wrong allocation subject');
+  const payments:any[]=[];const ids=[...new Set<string>(allocations.filter(x=>typeof x.modifierReference==='string'&&x.modifierReference.startsWith('bankPayment:')).map(x=>x.modifierReference.slice(12)))];
+  if(ids.length>5)return envelope({document:before,allocations,paymentInspection:'not_attempted_more_than_five_payments'});
+  for(const paymentId of ids){checked(paymentId);const {bankPayment:p}=await read.get('/bankPayments/'+paymentId);if(p?.id!==paymentId||p.organizationId!==org||p.contactId!==before[kind].contactId)throw Error('Wrong payment ownership');payments.push(p);}
+  const references=[reference,...ids.map(id=>'bankPayment:'+id)];const transactions=(await read.fetchAll('/transactions','transactions',{organizationId:org})).filter(t=>references.includes(t.originatorReference));if(transactions.some(t=>t.organizationId!==org))throw Error('Wrong transaction ownership');
+  if(transactions.length>6)return envelope({document:before,allocations,payments,transactions,postingInspection:'not_attempted_more_than_six_transactions'});
+  const postings:any[]=[];for(const t of transactions){const ps=await read.fetchAll('/postings','postings',{organizationId:org,transactionId:checked(t.id)});if(ps.some(p=>p.organizationId!==org||p.transactionId!==t.id))throw Error('Wrong posting ownership');postings.push(...ps);}
+  const after=await snapshot();return envelope({document:after,allocations,payments,transactions,postings,documentStableDuringRead:before.revision===after.revision});
+ }
+ if(action==='book_test_daybook_draft'){
+  const {draftSnapshot}=await import('./test-extended-drafts.js');const subjectId=checked(input.daybookTransactionId);return envelope({draft:await draftSnapshot(read,subjectId,org)});
+ }
+ if(['record_test_vat_payment','void_test_vat_payment','set_test_vat_return_settlement'].includes(action)){
+  let returnId=input.returnId??saved?.returnId??saved?.salesTaxPayment?.returnId;
+  if(action==='void_test_vat_payment'){const paymentId=checked(input.paymentId);const {salesTaxPayment:p}=await read.get('/salesTaxPayments/'+paymentId);if(p?.id!==paymentId||p.organizationId!=null&&p.organizationId!==org||returnId!=null&&p.returnId!==returnId)throw Error('Wrong VAT payment ownership');returnId=p.returnId;}
+  const {vatPeriod}=await import('./test-vat-management.js');return envelope({vatPeriod:await vatPeriod(read,org,checked(returnId))});
+ }
+ return {supported:false,reason:'No dedicated current-evidence reader for this operation type.',outcome:'undetermined',safeToRetry:false};
 }
