@@ -1,3 +1,5 @@
+> Updated by [autonomous final audit](autonomous-final-audit.md): historical reference rates and OSS configuration evidence are now available; the four-reserved-contract count below is historical.
+
 # Currency, bank split and native EU-sales continuation — 2026-10-31
 
 Validation:341 automated tests pass, TypeScript checking passes, and the test Worker bundle builds. All64 operation journals in groups b2300001–b2300009 are closed, including explicitly classified unsuccessful attempts; none remains pending.
