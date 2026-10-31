@@ -18,5 +18,5 @@ test('reserved writes require operation identity; reject arbitrary extra fields'
 });
 test('all 27 Numina capabilities have explicit mapped targets',()=>{
  assert.equal(Object.keys(numinaCoverage).length,27);for(const names of Object.values(numinaCoverage))assert.ok(names.length>0);
- assert.equal(new Set(roadmapTools.map(t=>t.name)).size,42);
+ assert.equal(new Set(roadmapTools.map(t=>t.name)).size,45);
 });
