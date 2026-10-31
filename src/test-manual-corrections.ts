@@ -25,3 +25,14 @@ export function expandManualDkkLines(snapshot:any){
  // The original header and raw snapshot revision remain part of source evidence.
  return {...snapshot,daybookTransactionLines:lines};
 }
+
+const draftScopes=new WeakMap<object,{org:string;ids:Set<string>}>();
+export function configureManualDrafts<T extends BillyClient>(client:T,org:string,ids:string|undefined):T {
+ const values=(ids??'').split(',').map(x=>x.trim()).filter(Boolean);
+ if(values.length>100||values.some(x=>!/^[A-Za-z0-9_-]{1,100}$/.test(x)))throw Error('Invalid manual draft deployment scope');
+ draftScopes.set(client,{org,ids:new Set(values)});return client;
+}
+export function manualDraftAllowed(client:BillyClient,org:string,header:any):boolean {
+ const scope=draftScopes.get(client);
+ return !!scope&&scope.org===org&&header?.organizationId===org&&scope.ids.has(header.id)&&header.apiType==null;
+}
