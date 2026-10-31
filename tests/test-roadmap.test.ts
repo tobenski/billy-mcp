@@ -18,5 +18,7 @@ test('reserved writes require operation identity; reject arbitrary extra fields'
 });
 test('all 27 Numina capabilities have explicit mapped targets',()=>{
  assert.equal(Object.keys(numinaCoverage).length,27);for(const names of Object.values(numinaCoverage))assert.ok(names.length>0);
- assert.equal(new Set(roadmapTools.map(t=>t.name)).size,45);
+ assert.equal(new Set(roadmapTools.map(t=>t.name)).size,48);
 });
+
+test('supplier correction and recorded-payment reversal contracts are explicit and strict',()=>{const find=(name:string)=>roadmapTools.find(t=>t.name===name)!;const op={operationId:'51111111-1111-4111-8111-000000000001',reasoning:'test',expectedRevision:'revision'};assert.ok(find('create_test_bill_credit_note_draft').mutation);assert.equal(find('get_test_document_payment').schema.safeParse({paymentId:'pay'}).success,true);assert.equal(find('void_test_document_payment').schema.safeParse({...op,paymentId:'pay'}).success,true);assert.equal(find('void_test_document_payment').schema.safeParse({...op,paymentId:'pay',sendPayment:true}).success,false);});
