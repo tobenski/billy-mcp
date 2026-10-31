@@ -49,6 +49,17 @@ export async function inspectWriteOperation(read:BillyClient,org:string,input:an
  if(action==='void_test_document_payment'||action==='create_test_fx_adjustment_draft'){
   const {paymentSnapshot}=await import('./test-document-payments.js');const payment=await paymentSnapshot(read,org,checked(input.paymentId));return envelope({payment});
  }
+ if(['create_test_credit_note_draft','create_test_bill_credit_note_draft'].includes(action)){
+  if(typeof input.operationId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.operationId))throw Error('Invalid credit operation ID');
+  const kind=action.includes('bill')?'bill':'invoice',sourceId=checked(input.billId??input.invoiceId),marker='TEST-'+input.operationId,numberKey=kind==='bill'?'voucherNo':'invoiceNo',sourceKey=kind==='bill'?'creditedBillId':'creditedInvoiceId';
+  const {invoiceSnapshot}=await import('./test-invoice-drafts.js');const {billSnapshot}=await import('./test-bill-drafts.js');const snapshot=(id:string)=>kind==='invoice'?invoiceSnapshot(read,org,id):billSnapshot(read,org,id);
+  const before=await snapshot(sourceId);const candidates=(await read.fetchAll('/'+kind+'s',kind+'s',{organizationId:org,[numberKey]:marker})).filter(x=>x[numberKey]===marker);
+  if(candidates.some(x=>x.organizationId!==org||x.type!=='creditNote'||x[sourceKey]!==sourceId))throw Error('Unexpected credit candidate ownership or source');
+  if(candidates.length>4)return envelope({source:before,candidateCount:candidates.length,creditInspection:'not_attempted_more_than_four_candidates'});
+  const credits:any[]=[];for(const candidate of candidates){const current:any=await snapshot(checked(candidate.id));if(current[kind][numberKey]!==marker||current[kind][sourceKey]!==sourceId||current[kind].type!=='creditNote')throw Error('Credit candidate changed during inspection');credits.push(current);}
+  const stability:boolean[]=[];for(const credit of credits)stability.push((await snapshot(credit[kind].id)).revision===credit.revision);
+  const after=await snapshot(sourceId);return envelope({source:after,creditCandidates:credits,candidateCount:credits.length,sourceStableDuringRead:before.revision===after.revision,creditCandidatesStableDuringRead:stability.every(Boolean),observedState:credits.length===0?'no_marked_credit':credits.length===1?'one_marked_credit':'multiple_marked_credits'});
+ }
  if(['book_test_invoice_draft','book_test_bill_draft','record_test_invoice_payment','record_test_bill_payment','create_test_credit_note_draft','create_test_bill_credit_note_draft'].includes(action)){
   const kind=action.includes('bill')?'bill':'invoice',recordId=checked(input.id??input.billId??input.invoiceId);
   const {invoiceSnapshot}=await import('./test-invoice-drafts.js');const {billSnapshot}=await import('./test-bill-drafts.js');const snapshot=()=>kind==='invoice'?invoiceSnapshot(read,org,recordId):billSnapshot(read,org,recordId);
