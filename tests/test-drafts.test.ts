@@ -61,7 +61,7 @@ function upstream(t:any, options:{org?:string;state?:string;timeout?:boolean;for
 test('write-enabled registry adds narrow draft and attachment tools',async t=>{
   const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('No network')});
   const result=await rpc(journal(),'',{},'tools/list');
-  assert.equal(result.result.tools.length,114);
+  assert.equal(result.result.tools.length,112);
   assert.deepEqual(result.result.tools.filter((x:any)=>x.annotations?.readOnlyHint===false&&!roadmapTools.some(t=>t.name===x.name)).map((x:any)=>x.name).sort(),['attach_test_file_to_draft','close_test_booking_operation','create_test_daybook_draft','create_test_partial_vat_rate','delete_test_daybook_draft','remove_test_draft_attachment','reuse_test_inbox_attachment','set_test_vat_return_settlement','update_test_daybook_draft','upload_test_file']);
   assert.equal(calls.mock.callCount(),0);
 });
@@ -161,3 +161,5 @@ test('diagnostic compare-and-swap never overwrites evidence changed concurrently
  await assert.rejects(journalRun(db,orgId,key,'target',{action:'test'},async()=>{throw Error('Billy API POST /bankPayments failed with 500: private');}));
  const row:any=await base.prepare('SELECT result FROM operations WHERE id = ?').bind(orgId+':'+key).first();assert.equal(row.result,newer);assert.equal(row.state,'pending');
 });
+
+test('removed upload-link and OSS stubs cannot be listed or called and do not access Billy',async t=>{const calls=t.mock.method(globalThis,'fetch',async()=>{throw Error('Unexpected network');});const db=journal(),list=await rpc(db,'',{},'tools/list');for(const name of ['create_test_upload_link','get_test_oss_report']){assert.ok(!list.result.tools.some((x:any)=>x.name===name));const r=await rpc(db,name,{});assert.ok(r.error||r.result?.isError,JSON.stringify(r));}for(const name of ['upload_test_file','get_test_oss_configuration','get_test_vat_period'])assert.ok(list.result.tools.some((x:any)=>x.name===name));assert.equal(calls.mock.callCount(),0);});
