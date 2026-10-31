@@ -1,3 +1,5 @@
+> Updated scope and native rounding evidence: [document VAT and currency continuation](document-vat-currency-continuation.md).
+
 # Partial payments and multiline documents — 2026-10-31
 
 This is a development checkpoint, not a declaration that the whole roadmap is finished. No discovery refresh is needed: existing tool names and schemas cover these changes. Only the isolated test Worker was deployed.
