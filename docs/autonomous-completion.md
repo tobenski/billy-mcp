@@ -1,3 +1,5 @@
+> Current checkpoint: [currency, split matching and native EU-sales](currency-split-eu-completion.md). Older counts and reserved-function lists below are historical.
+
 > Also completed: [VAT payment/refund lifecycle](vat-payment-lifecycle.md), including native void, period reopen and full fixture reversal.
 
 > Latest: [supplier acceptance and document payments](document-payments.md). Supplier booking/full credit and DKK invoice/bill payment/void are live-verified.
