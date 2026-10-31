@@ -1,3 +1,13 @@
+# Current contract status — v2, 2026-10-31
+
+The test Worker exposes 108 tools when writes are enabled (96 when disabled), including 20 new reserved contracts. All 51 original read-only tools and production remain unchanged. The original 22 roadmap tools comprise 21 restricted implementations and one reserved upload-link contract. Four supplemental VAT tools include one retired own-deduction-code stub. Status now reports source currencies, supplemental tools, retirement and known limitations.
+
+See [current completion/audit](autonomous-completion.md) for the new contracts and live evidence. Direct byte upload is implemented; a presigned upload-link endpoint is not verified. OSS, historical rates and customer-level EU-sales reports remain unverified native capabilities. A schema reservation makes no claim of API support.
+
+The sections below preserve the earlier v1 contract history; current implementation scope is defined above, in the completion report and by `get_test_tool_status`.
+
+---
+
 # Billy-værktøjer, kontrakt v1
 
 Historisk vurdering før rapportpakken: [Status mod Numina](capability-audit-2026-10-30.md).
