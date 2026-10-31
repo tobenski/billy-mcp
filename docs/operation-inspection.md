@@ -1,3 +1,9 @@
+# Current operation inspection
+
+The evidence reader also supports document booking and payments, VAT operations, daybook booking and credit-note creation. Credit creation inspection reads the current original document and up to four credit candidates with the exact operation marker, validates ownership and original-document linkage, and checks source/candidate stability. Missing and duplicate candidates are shown explicitly. It does not infer success or change journal state.
+
+The automated suite now contains 392 passing tests. Credit inspection covers invoice and supplier variants, zero/one/multiple candidates, bounded reads, wrong ownership/linkage and concurrent source changes. Live inspection verified existing supplier and customer credit operations, exact marked candidates and stable source/credit reads. Earlier bank-only scope below is historical.
+
 # Read-only operation inspection
 
 `get_test_write_operation` keeps its existing input schema and journal fields.
