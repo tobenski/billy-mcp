@@ -22,13 +22,13 @@ export async function billSnapshot(read:BillyClient,org:string,billId:string){
  if(billLines.some(l=>l.billId!==billId)||attachments.some(a=>a.organizationId!==org||a.ownerReference!=='bill:'+billId))throw new NoWriteError('Unexpected bill child ownership');
  const value={bill,billLines,attachments};return{...value,revision:await sha256(new TextEncoder().encode(canonical(value)))};
 }
-async function owned(db:JournalDB,org:string,b:any){
+export async function billProvenance(db:JournalDB,org:string,b:any){
  const key=/^TEST-([a-f0-9-]{36})$/.exec(b.voucherNo??'')?.[1];if(!key)throw new NoWriteError('Expected test-tool-created bill');z.string().uuid().parse(key);
  const row=await db.prepare('SELECT fingerprint, state, result FROM operations WHERE id = ?').bind(org+':'+key).first<{fingerprint:string;state:string;result:string}>();
- if(row?.state!=='complete'||JSON.parse(row.fingerprint).action!=='create_test_bill_draft'||JSON.parse(row.result).bill?.id!==b.id)throw new NoWriteError('Bill provenance cannot be proved');
+ if(row?.state!=='complete'||!['create_test_bill_draft','create_test_bill_credit_note_draft'].includes(JSON.parse(row.fingerprint).action)||JSON.parse(row.result).bill?.id!==b.id)throw new NoWriteError('Bill provenance cannot be proved');
 }
 const comparableLines=(ls:any[])=>ls.map(l=>canonical({accountId:l.accountId,description:l.description,amount:l.amount,taxRateId:l.taxRateId??null})).sort();
-function supported(b:any){if(b.state!=='draft'||b.type!=='bill'||b.taxMode!=='incl'||!sourceCurrencies.includes(b.currencyId)||typeof b.exchangeRate!=='number'||!Number.isFinite(b.exchangeRate)||b.exchangeRate<=0||b.currencyId==='DKK'&&b.exchangeRate!==1||b.creditedBillId||b.paymentAccountId||b.isPaid!==false)throw new NoWriteError('Only unpaid supported-currency draft bills without payment/credit links supported');}
+function supported(b:any,credit=false){if(b.state!=='draft'||!(credit?['bill','creditNote']:['bill']).includes(b.type)||b.taxMode!=='incl'||!sourceCurrencies.includes(b.currencyId)||typeof b.exchangeRate!=='number'||!Number.isFinite(b.exchangeRate)||b.exchangeRate<=0||b.currencyId==='DKK'&&b.exchangeRate!==1||(!credit&&b.creditedBillId)||b.paymentAccountId||b.isPaid!==false)throw new NoWriteError('Only unpaid supported-currency draft bills without payment/credit links supported');}
 function normalize(ls:any[]){if(!Array.isArray(ls)||!ls.length||ls.length>20)throw new NoWriteError('Supply 1-20 lines');return ls.map(l=>{id.parse(l.accountId);if(l.quantity!==1||l.productId!==undefined||l.amountBasis!=='gross')throw new NoWriteError('Bill lines require quantity 1, gross basis and no productId');cents(l.unitPrice);z.string().min(1).max(500).parse(l.description);if(l.taxRateId!==null)id.parse(l.taxRateId);return{accountId:l.accountId,description:l.description,amount:l.unitPrice,taxRateId:l.taxRateId};});}
 export function billDraftHandler(read:BillyClient,write:BillyClient,db:JournalDB,org:string,name:string){return async(a:any)=>{try{
  const creating=name==='create_test_bill_draft',deleting=name==='delete_test_bill_draft';if(!billDraftDescriptions[name])throw new NoWriteError('Unsupported bill action');
@@ -43,7 +43,7 @@ export function billDraftHandler(read:BillyClient,write:BillyClient,db:JournalDB
  return jsonResult(await journalRun(db,org,a.operationId,creating?'bill-create:'+a.operationId:'bill:'+a.id,{action:name,...a},async()=>{
  let before:any;const files:string[]=[];let payload:any={};
  try{
- if(!creating){before=await billSnapshot(read,org,a.id);supported(before.bill);await owned(db,org,before.bill);if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_bill again');}
+ if(!creating){before=await billSnapshot(read,org,a.id);supported(before.bill,deleting);await billProvenance(db,org,before.bill);if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_bill again');}
  if(!deleting){
  if(before?.billLines.some((l:any)=>l.quantity!=null&&l.quantity!==1||l.productId!=null))throw new NoWriteError('Existing bill has unsupported quantities or product links');
  const contactId=creating?id.parse(a.contactId):before.bill.contactId;if(!creating&&a.contactId!==undefined&&a.contactId!==contactId)throw new NoWriteError('Bill contact is immutable');
