@@ -68,7 +68,13 @@ export async function journalRun(db: JournalDB, org: string, key: string, target
     const native=/^Billy API (GET|POST|PUT|DELETE) \/([A-Za-z]+)(?:\/[^ ]+)? failed with ([1-5][0-9]{2}):/.exec(message);
     const network=/^Billy API (GET|POST|PUT|DELETE) \/([A-Za-z]+)(?:\/[^ ]+)? network error:/.exec(message);
     const diagnostic={kind:native?'billy_http':network?'billy_network':'verification_or_internal',...(native?{method:native[1],resource:native[2],httpStatus:Number(native[3])}:network?{method:network[1],resource:network[2]}:{}),recordedAt:new Date().toISOString(),outcome:'undetermined',safeToRetry:false};
-    try{await db.prepare("UPDATE operations SET result = ? WHERE id = ? AND state = 'pending' AND result IS NULL").bind(JSON.stringify({diagnostic}),journalId).run();}catch{/* Diagnostic failure must never release the pending lock. */}
+    try{
+      const current=await prior();
+      if(current?.state==='pending'){
+        const evidence=current.result===null?{}:JSON.parse(current.result);
+        if(evidence&&typeof evidence==='object'&&!Array.isArray(evidence))await db.prepare("UPDATE operations SET result = ? WHERE id = ? AND state = 'pending' AND result IS ?").bind(JSON.stringify({...evidence,diagnostic}),journalId,current.result).run();
+      }
+    }catch{/* Diagnostic failure must never release the pending lock or replace preserved evidence. */}
     // Keep pending lock even after network errors: a write may already have succeeded.
     throw new Error('Operation outcome requires inspection. No automatic retry. Read get_test_write_operation and the draft in Billy before further writes.');
   }
@@ -94,7 +100,7 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
   }
   const wrap = (fn: (a: any) => Promise<unknown>) => async (args: any) => { try { return jsonResult(await fn(args)); } catch(e) { return errorResult(e); } };
   server.registerTool('get_test_write_operation', {
-    description: 'Inspect the persisted outcome of a test write and fresh bank evidence for bank operations. Saved result is historical; current observations never resolve pending state, release locks or authorize retry. Pending means in progress or uncertain; never retry it with a new ID.',
+    description: 'Inspect the persisted outcome of a test write and fresh native evidence for bank matches, document bookings/payments, daybook bookings and VAT operations. Saved result is historical; current observations never resolve pending state, release locks or authorize retry. Pending means in progress or uncertain; never retry it with a new ID.',
     inputSchema: z.object({ operationId }).strict(), annotations: { readOnlyHint: true },
   }, wrap(async ({operationId}) => {
     await identity();
@@ -102,9 +108,9 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
     if(!row)return {operationId,state:'not_found'};
     const input=JSON.parse(row.fingerprint);
     let currentEvidence:any;
-    try{const {inspectBankOperation}=await import('./test-operation-inspection.js');currentEvidence=await inspectBankOperation(read,orgId,input);}
-    catch{currentEvidence={available:false,outcome:'undetermined',safeToRetry:false,reason:'Current evidence could not be verified. Saved journal state and pending lock are unchanged.'};}
     const saved=row.result?JSON.parse(row.result):null;
+    try{const {inspectWriteOperation}=await import('./test-operation-inspection.js');currentEvidence=await inspectWriteOperation(read,orgId,input,saved);}
+    catch{currentEvidence={available:false,outcome:'undetermined',safeToRetry:false,reason:'Current evidence could not be verified. Saved journal state and pending lock are unchanged.'};}
     return {operationId,state:saved?.disposition==='abandoned'?'abandoned':row.state,storageState:row.state,retryBlocked:row.state==='pending',input,result:saved,resultIsHistorical:true,currentEvidence};
   }));
   server.registerTool('create_test_daybook_draft', {
