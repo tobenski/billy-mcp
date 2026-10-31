@@ -29,6 +29,5 @@ export const futureTools=[
  def('get_test_historical_exchange_rate','Read a documented native historical rate and source date. Native endpoint unverified; current rates must never masquerade as historical rates.',{currencyId:currency,date}),
  def('get_test_eu_sales_report','Read a native EU-sales list by customer/VAT ID. Native endpoint unverified; Rubrik B totals are not an EU-sales list. No MCP aggregation.',{from:date,to:date,...{page:z.number().int().positive().optional()}}),
  def('get_test_oss_configuration','Read verified native OSS configuration, country-specific accounts/tax rules and reporting scope. Native mapping unverified.',{}),
- def('get_test_oss_report','Read a native OSS report for an explicit period/country. Native endpoint unverified; no reconstructed MCP report or authority submission.',{from:date,to:date,countryCode:z.string().regex(/^[A-Z]{2}$/).optional()}),
  def('archive_test_contact','Archive/unarchive a test-marked contact with revision, ownership and native readback checks.',{...write,...revision,id,isArchived:z.boolean()},true),
 ];
