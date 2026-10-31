@@ -1,3 +1,4 @@
+import {configureManualDrafts} from '../src/test-manual-corrections.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Buffer } from 'node:buffer';
@@ -7,7 +8,7 @@ const uploadKey='55555555-5555-4555-8555-555555555555';
 const attachKey='66666666-6666-4666-8666-666666666666';
 const pdf=Buffer.from('%PDF-1.4\nSynthetic test fixture\n%%EOF');
 const args={operationId:uploadKey,fileName:'test.pdf',contentType:'application/pdf',base64:pdf.toString('base64')};
-function harness(options:{org?:string;state?:string;timeout?:boolean;lostAttachment?:boolean;fileSize?:number;expectedBytes?:Buffer}={}) {
+function harness(options:{manual?:boolean;authorized?:boolean;org?:string;state?:string;timeout?:boolean;lostAttachment?:boolean;fileSize?:number;expectedBytes?:Buffer}={}) {
   const rows=new Map<string,any>(); const handlers:Record<string,any>={}; const schemas:Record<string,any>={};let writes=0;let linked:any=null;
   const db:any={prepare(sql:string){return{bind(...a:any[]){return{
     async first(){return rows.get(a[0])??null},async run(){
@@ -18,12 +19,13 @@ function harness(options:{org?:string;state?:string;timeout?:boolean;lostAttachm
   }}}}};
   const read:any={async get(path:string){
     if(path==='/organization')return{organization:{id:options.org??'org'}};
-    if(path==='/daybookTransactions/draft')return{daybookTransaction:{organizationId:'org',state:options.state??'draft',apiType:'mcp-test:example',description:'test'}};
+    if(path==='/daybookTransactions/draft')return{daybookTransaction:{id:'draft',organizationId:'org',state:options.state??'draft',apiType:options.manual?null:'mcp-test:example',description:'test'}};
     if(path==='/attachments/link')return{attachment:linked};
     if(path==='/files/file')return{file:{id:'file',fileSize:options.fileSize,downloadUrl:'https://download.billy.dk/test.pdf?token=synthetic'}};
     throw Error('Unexpected read '+path);
   },async fetchAll(){return linked?[linked]:[]}};
   const write:any={async postBinary(path:string,bytes:Uint8Array,opts:any){writes++;assert.equal(path,'/files');assert.deepEqual(Buffer.from(bytes),options.expectedBytes??pdf);assert.equal(opts.organizationId,'org');if(options.timeout)throw Error('timeout');return{files:[{id:'file'}]};},async post(path:string,body:any){writes++;assert.equal(path,'/attachments');linked={id:'link',...body.attachment};if(options.lostAttachment){options.lostAttachment=false;throw Error('Lost attachment response');}return{attachments:[linked]};}};
+  if(options.authorized)configureManualDrafts(read,'org','draft');
   registerTestFileTools({registerTool(name:string,config:any,handler:any){handlers[name]=handler;schemas[name]=config.inputSchema;}} as any,read,write,db,'org');
   return{async call(name:string,input:any){return handlers[name](schemas[name].parse(input));},writes:()=>writes,rows};
 }
@@ -147,4 +149,10 @@ test('lost draft attachment response recovers the exact association without anot
  assert.equal((await h.call('attach_test_file_to_draft',input)).isError,true);
  const recovered=await h.call('attach_test_file_to_draft',input);assert.notEqual(recovered.isError,true,JSON.stringify(recovered));
  assert.equal(JSON.parse(recovered.content[0].text).result.recovery.nativeWrites,0);assert.equal(h.writes(),2);
+});
+
+test('file linking on manual drafts requires explicit scope and still rejects approved entries',async()=>{
+ for(const options of [{manual:true},{manual:true,authorized:true},{manual:true,authorized:true,state:'approved'}]){
+  const h=harness(options);await h.call('upload_test_file',args);const r=await h.call('attach_test_file_to_draft',{operationId:attachKey,uploadOperationId:uploadKey,daybookTransactionId:'draft',expectedDescription:'test'});assert.equal(r.isError===true,!options.authorized||options.state==='approved');assert.equal(h.writes(),options.authorized&&!options.state?2:1);
+ }
 });
