@@ -1,3 +1,4 @@
+import {canonical} from './test-vat-management.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { Buffer } from 'node:buffer';
@@ -73,7 +74,20 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true},
   },wrap(async({operationId,uploadOperationId,daybookTransactionId,expectedDescription})=>{
     await identity();const file=await uploaded(uploadOperationId);const ownerReference='daybookTransaction:'+daybookTransactionId;
-    return journalRun(db,orgId,operationId,daybookTransactionId,{action:'attach_file',uploadOperationId,daybookTransactionId,expectedDescription},async()=>{
+    const payload={action:'attach_file',uploadOperationId,daybookTransactionId,expectedDescription},key=orgId+':'+operationId;
+    const pending=await db.prepare('SELECT fingerprint, state, result, target'+(db.guardedWrites?', write_phase':'')+' FROM operations WHERE id = ?').bind(key).first<any>();
+    if(pending?.state==='pending'&&pending.write_phase!=='prepared'){
+      if(pending.fingerprint!==canonical(payload)||pending.target!==orgId+':'+daybookTransactionId)throw Error('Pending attachment input mismatch');
+      const saved=JSON.parse(pending.result??'null');if(saved?.stage!=='before_draft_attachment'||saved.fileId!==file.fileId)throw Error('No recoverable draft attachment evidence');
+      const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
+      const all=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
+      const matches=all.filter((a:any)=>a.fileId===file.fileId&&a.ownerReference===ownerReference&&a.organizationId===orgId);
+      if(canonical(draft)!==canonical(saved.draft)||matches.length!==1||all.length!==saved.existing.length+1||saved.existing.some((a:any)=>!all.some((b:any)=>canonical(a)===canonical(b))))throw Error('Draft attachment outcome not uniquely verified');
+      const result={alreadyLinked:false,attachment:matches[0],fileId:file.fileId,recovery:{nativeWrites:0}};
+      const done=await db.prepare("UPDATE operations SET state = 'complete', result = ? WHERE id = ? AND state = 'pending' AND fingerprint = ? AND target = ?").bind(JSON.stringify(result),key,pending.fingerprint,pending.target).run();if(!done.success||done.meta.changes!==1)throw Error('Journal changed during attachment recovery');
+      return{replayed:false,operationId,result};
+    }
+    return journalRun(db,orgId,operationId,daybookTransactionId,payload,async()=>{
       const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
       if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Only test-tool-created drafts may receive attachments');
       if((draft.description??'')!==expectedDescription)throw new NoWriteError('Draft description changed; read again');
@@ -81,6 +95,8 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
       if(existing.some((a:any)=>a.ownerReference!==ownerReference))throw new NoWriteError('Unexpected attachment owner in response');
       const prior=existing.find((a:any)=>a.fileId===file.fileId);
       if(prior)return {alreadyLinked:true,attachment:prior,fileId:file.fileId};
+      const saved=await db.prepare("UPDATE operations SET result = ? WHERE id = ? AND state = 'pending'").bind(JSON.stringify({stage:'before_draft_attachment',draft,existing,fileId:file.fileId}),key).run();
+      if(!saved.success||saved.meta.changes!==1)throw new NoWriteError('Cannot preserve draft attachment evidence');
       const response=await write.post('/attachments',{attachment:{organizationId:orgId,ownerReference,fileId:file.fileId}});
       const link=response.attachments?.find((a:any)=>a.fileId===file.fileId&&a.ownerReference===ownerReference);
       if(!id.safeParse(link?.id).success)throw new Error('Missing attachment ID');
