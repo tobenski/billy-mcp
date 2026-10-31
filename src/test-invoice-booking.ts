@@ -40,7 +40,7 @@ export async function invoiceLedger(read:BillyClient,org:string,s:any,c:any){
 }
 export function invoiceBookingHandler(read:BillyClient,write:BillyClient,db:JournalDB,org:string,name:string){return async(a:any)=>{try{
  z.string().uuid().parse(a.operationId);z.string().min(1).parse(a.expectedRevision);z.string().min(1).max(4000).parse(a.reasoning);const book=name==='book_test_invoice_draft';if(!invoiceBookingDescriptions[name])throw new NoWriteError('Unknown action');id.parse(book?a.id:a.invoiceId);
- const {organization}=await read.get('/organization');if(organization?.id!==org)throw new NoWriteError('Organization mismatch');
+ const {organization}=await read.get('/organization');if(organization?.id!==org||organization.baseCurrencyId!=='DKK')throw new NoWriteError('Organization mismatch or unsupported base currency');
  const fingerprint=canonical({action:name,...a}),target=org+':invoice:'+(book?a.id:a.invoiceId),journalId=org+':'+a.operationId;
  const pending=await db.prepare('SELECT fingerprint, state, result, target FROM operations WHERE id = ?').bind(journalId).first<any>();
  if(book&&pending?.state==='pending'){
