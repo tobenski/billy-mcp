@@ -1,3 +1,5 @@
+> Update, 2026-10-31: the two native upload-link/OSS-report placeholders have now been removed. See [the renewed endpoint review](removed-native-placeholders.md). Reserved-contract and discovery counts below are historical.
+
 > This filename is historical, not a final completion claim. See [current implementation and remaining work](partial-payments-multiline.md).
 
 # Autonomous continuation and remaining contract boundaries — 2026-10-31
