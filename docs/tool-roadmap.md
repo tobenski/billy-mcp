@@ -1,3 +1,11 @@
+# Latest follow-up: supplier drafts and products
+
+See [document lifecycle progress](document-lifecycle-progress.md). Four formerly reserved handlers are now live-tested (contact archive plus supplier draft create/update/delete). Three additional product contracts are implemented with local tests and await discovery/live acceptance. Current test discovery: **111 tools** with writes enabled, **99** when disabled. Remaining reserved handlers are still errors with no side effects; production's 51 reads are unchanged.
+
+Earlier audit and contract history follows.
+
+---
+
 # Current contract status — v2, 2026-10-31
 
 The test Worker exposes 108 tools when writes are enabled (96 when disabled), including 20 new reserved contracts. All 51 original read-only tools and production remain unchanged. The original 22 roadmap tools comprise 21 restricted implementations and one reserved upload-link contract. Four supplemental VAT tools include one retired own-deduction-code stub. Status now reports source currencies, supplemental tools, retirement and known limitations.
