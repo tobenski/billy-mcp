@@ -18,7 +18,7 @@ import { cap, errorResult } from './tools/helpers.js';
 
 // Explicit names keep writes and upstream financial calculations out of this data-only endpoint.
 // execute_script is deliberately absent from this module's import graph.
-const READ_TOOLS = new Set([
+export const READ_TOOLS = new Set([
   'get_organization', 'list_contacts', 'get_contact', 'list_contact_persons',
   'list_products', 'get_product', 'list_invoices', 'get_invoice',
   'list_bills', 'get_bill', 'list_bank_payments', 'list_balance_modifiers',
@@ -41,6 +41,7 @@ const READ_TOOLS = new Set([
 export function createReadOnlyServer(
   billy: BillyClient,
   server = new McpServer({ name: 'billy-readonly', version: '0.3.2-worker.3' }),
+  selectedTool?: string,
 ): McpServer {
   const register = server.registerTool.bind(server);
   server.registerTool = ((...args: Parameters<McpServer['registerTool']>) => {
@@ -49,19 +50,19 @@ export function createReadOnlyServer(
     return tool;
   }) as McpServer['registerTool'];
 
-  registerOrganizationTools(server, billy);
-  registerContactTools(server, billy);
-  registerProductTools(server, billy);
-  registerInvoiceTools(server, billy);
-  registerPaymentTools(server, billy);
-  registerBillTools(server, billy);
-  registerAccountTools(server, billy);
-  registerDaybookTools(server, billy);
-  registerReportingTools(server, billy);
-  registerAttachmentTools(server, billy);
-  registerDocumentReadTools(server, billy);
-  registerLedgerReadTools(server, billy);
-  registerTaxReadTools(server, billy);
+  if(!selectedTool || ['get_organization'].includes(selectedTool)) registerOrganizationTools(server, billy);
+  if(!selectedTool || ['list_contacts', 'get_contact', 'list_contact_persons'].includes(selectedTool)) registerContactTools(server, billy);
+  if(!selectedTool || ['list_products', 'get_product'].includes(selectedTool)) registerProductTools(server, billy);
+  if(!selectedTool || ['list_invoices', 'get_invoice'].includes(selectedTool)) registerInvoiceTools(server, billy);
+  if(!selectedTool || ['list_bank_payments', 'list_balance_modifiers'].includes(selectedTool)) registerPaymentTools(server, billy);
+  if(!selectedTool || ['list_bills', 'get_bill'].includes(selectedTool)) registerBillTools(server, billy);
+  if(!selectedTool || ['list_accounts', 'get_account', 'list_daybook_transactions'].includes(selectedTool)) registerAccountTools(server, billy);
+  if(!selectedTool || ['list_daybooks'].includes(selectedTool)) registerDaybookTools(server, billy);
+  if(!selectedTool || ['list_postings', 'list_transactions', 'list_bank_lines', 'list_bank_line_matches'].includes(selectedTool)) registerReportingTools(server, billy);
+  if(!selectedTool || ['list_files', 'get_file', 'list_attachments'].includes(selectedTool)) registerAttachmentTools(server, billy);
+  if(!selectedTool || ['list_invoice_lines', 'list_bill_lines', 'list_contact_balance_postings', 'list_contact_balance_payments', 'list_invoice_late_fees', 'list_invoice_reminders', 'list_invoice_reminder_associations', 'list_invoice_logs'].includes(selectedTool)) registerDocumentReadTools(server, billy);
+  if(!selectedTool || ['list_account_groups', 'list_account_natures', 'list_daybook_transaction_lines', 'list_daybook_balance_accounts', 'get_daybook_transaction', 'get_transaction', 'get_posting', 'get_bank_line_match', 'list_bank_line_subject_associations'].includes(selectedTool)) registerLedgerReadTools(server, billy);
+  if(!selectedTool || ['list_tax_rates', 'list_tax_rate_deduction_components', 'list_sales_tax_accounts', 'list_sales_tax_meta_fields', 'list_sales_tax_returns', 'get_sales_tax_return', 'list_sales_tax_payments', 'list_sales_tax_rulesets', 'list_sales_tax_rules', 'list_currencies'].includes(selectedTool)) registerTaxReadTools(server, billy);
 
   // A separate schema and GET-only call avoid exposing the upstream raw write API.
   server.registerTool('billy_raw_request', {
