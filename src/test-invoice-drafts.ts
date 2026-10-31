@@ -1,3 +1,4 @@
+import {attachmentOnly,updateDocumentAttachments} from './test-document-attachments.js';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
 import {canonical} from './test-vat-management.js';
@@ -10,7 +11,7 @@ const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const ordered=(xs:any[])=>[...xs].sort((a,b)=>(a.priority??0)-(b.priority??0)||a.id.localeCompare(b.id));
 export const invoiceDraftDescriptions:Record<string,string>={
  create_test_invoice_draft:'Create an unsent test invoice draft with explicit existing test products, revenue accounts and expected native sales VAT codes. Up to five lines/three products/three source attachments; uniform gross or net basis. DKK or EUR/USD/GBP/SEK/NOK with explicit native exchangeRate. Description maps to contactMessage. Due date maps to net payment days and is verified. No booking, payment or sending.',
- update_test_invoice_draft:'Update description/due date, replace up to five lines via individual native invoice-line writes or add file links on a journal-proven unsent test invoice draft. Date/contact/currency/rate are immutable. Fresh get_invoice revision required. A partial failure retains the operation lock; never retry with a new ID. No booking or sending.',
+ update_test_invoice_draft:'Attachment-only input also adds files to journal-proven draft or approved invoices/credit notes without financial edits; exact pending replay can verify a completed attachment write. Update description/due date, replace up to five lines via individual native invoice-line writes or add file links on a journal-proven unsent test invoice draft. Date/contact/currency/rate are immutable. Fresh get_invoice revision required. A partial failure retains the operation lock; never retry with a new ID. No booking or sending.',
  delete_test_invoice_draft:'Delete only a journal-proven unsent test invoice draft with a fresh get_invoice revision. Verify deletion and preservation of attachment-file metadata. Never delete approved invoices or send messages.',
 };
 export async function invoiceSnapshot(read:BillyClient,org:string,invoiceId:string){
@@ -43,6 +44,7 @@ export async function resolvedInvoiceTax(read:BillyClient,org:string,rulesetId:s
 function inputLines(ls:any[]){if(!Array.isArray(ls)||!ls.length||ls.length>5)throw new NoWriteError('Supply one to five invoice lines');const modes=new Set(ls.map(l=>l.amountBasis));if(modes.size!==1||![...modes].every(m=>['gross','net'].includes(m)))throw new NoWriteError('Use one explicit gross or net basis for all lines');
  return ls.map((l,i)=>{id.parse(l.accountId);id.parse(l.productId);id.parse(l.taxRateId);z.string().min(1).max(500).parse(l.description);z.number().positive().max(10000).refine(n=>Math.abs(n*1000-Math.round(n*1000))<1e-7).parse(l.quantity);z.number().positive().max(1e6).refine(n=>Math.abs(n*100-Math.round(n*100))<1e-7).parse(l.unitPrice);return{...l,priority:i};});}
 export function invoiceDraftHandler(read:BillyClient,write:BillyClient,db:JournalDB,org:string,name:string){return async(a:any)=>{try{
+ if(name==='update_test_invoice_draft'&&attachmentOnly(a))return jsonResult(await updateDocumentAttachments(read,write,db,org,'invoice',a,()=>invoiceSnapshot(read,org,a.id),h=>invoiceProvenance(db,org,h,'invoice')));
  const create=name==='create_test_invoice_draft',remove=name==='delete_test_invoice_draft';if(!invoiceDraftDescriptions[name])throw new NoWriteError('Unknown invoice action');z.string().uuid().parse(a.operationId);z.string().min(1).max(4000).parse(a.reasoning);if(!create){id.parse(a.id);z.string().min(1).parse(a.expectedRevision);}
  if(a.description!==undefined)z.string().min(1).max(4000).parse(a.description);if(a.currencyId!==undefined&&!sourceCurrencies.includes(a.currencyId))throw new NoWriteError('Unsupported currency');
  const supplied=a.lines===undefined?undefined:inputLines(a.lines),attachmentIds=z.array(id).max(3).parse(a.attachmentIds??[]);
