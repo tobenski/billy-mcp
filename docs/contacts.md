@@ -1,3 +1,11 @@
+# Current foreign-contact extension — 2026-10-31
+
+Create/update now support foreign countries verified through Billy's native country record. Country changes on an existing contact are refused. DK CVR remains eight digits; foreign vatNumber is stored as registrationNo with syntax checking only, without registry/VIES verification. Native foreign contact creation, update and clearing the registration number were live-tested. No messages are sent. See [completion report](autonomous-completion.md).
+
+Earlier DK-only phase documentation follows for historical context.
+
+---
+
 # Test contacts, phase 1
 
 `create_test_contact` and `update_test_contact` now use the existing reserved schemas. No new tool registration is required. Only the isolated write-enabled test worker activates these handlers. Production remains unchanged.
