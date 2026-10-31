@@ -18,7 +18,7 @@ Billy's native rounding differs between document types: two gross125.08 DKK line
 
 Q4 VAT total is0 and its complete revision is restored to1121855f98c33a52c5dfe615ae2c0cf7ae7ba3a2785008d41106754d890b092f. Offline test account5710 was used; connected bank5711, production, messages and real bank transfers were untouched.
 
-366 automated tests, TypeScript checking and the Worker build pass. Tests cover DKK/EUR partial invoice/bill sequences, newest-first reversal, lost-response recovery, complete multiline credits and rejection of the other document type's rounding.
+367 automated tests, TypeScript checking and the Worker build pass. Tests cover DKK/EUR partial invoice/bill sequences, newest-first reversal, lost-response recovery, complete multiline credits and rejection of the other document type's rounding.
 
 ## Still open
 
@@ -26,4 +26,4 @@ Fees, standalone manual FX drafts, foreign bank accounts, multiline foreign supp
 
 ## Publication status
 
-The test Worker is deployed. Publication initially required explicit authorization for public test-environment details. The user has now authorized this and future publications within this development project. The source, tests and report are being synchronized to cloudflare/test-regnskab-api.
+The test Worker is deployed. Publication initially required explicit authorization for public test-environment details. The user has now authorized this and future publications within this development project. The source, tests and report are synchronized to cloudflare/test-regnskab-api; all12 initial file blobs were verified against the tested checkout. A subsequent safety fix explicitly rejects invoice booking and credit creation when organization baseCurrencyId is not DKK, before any native write.
