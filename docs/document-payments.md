@@ -1,3 +1,5 @@
+> Current scope: [partial payments and multiline checkpoint](partial-payments-multiline.md). Earlier counts and full-payment/single-line restrictions below are historical.
+
 > Superseded scope: [foreign document payments, FX protection and bank splits](currency-split-eu-completion.md) are now implemented with documented restrictions.
 
 # Supplier acceptance and recorded document payments — 2026-10-31
