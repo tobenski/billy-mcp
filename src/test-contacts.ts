@@ -5,8 +5,8 @@ import {jsonResult,errorResult} from './tools/helpers.js';
 import * as z from 'zod/v4';
 
 export const contactDescriptions:Record<string,string>={
- create_test_contact:'Create a test-marked Danish customer/supplier with duplicate checks across native contacts (name, registration number and supplied email). Default country DK; other countries and domainName refused in phase 1. CVR/vatNumber map to one registrationNo and must agree. Optional email creates a named primary contact person. No messages sent. Persistent operation replay.',
- update_test_contact:'Update only supplied fields of an active test-tool-marked Danish contact using revision from get_contact. Null clears supported optional fields. Preserves unrelated contact persons; email targets one unambiguous primary/sole person. No messages sent. domainName and foreign countries refused. Duplicate checks and persistent operation replay.',
+ create_test_contact:'Create a test-marked customer/supplier with duplicate checks across native contacts (name, registration number and supplied email). Default country DK; country must exist in Billy. CVR is DK-only; foreign vatNumber maps to registrationNo without registry/VIES validation. domainName unsupported. Optional email creates a named primary contact person. No messages sent. Persistent operation replay.',
+ update_test_contact:'Update only supplied fields of an active test-tool-marked contact using revision from get_contact. Null clears supported optional fields. Preserves unrelated contact persons; email targets one unambiguous primary/sole person. No messages sent. domainName and country changes refused. Duplicate checks and persistent operation replay.',
 };
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 const stable=(v:any):string=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().filter(k=>v[k]!==undefined).map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
@@ -26,18 +26,19 @@ export async function contactSnapshot(read:BillyClient,orgId:string,contactId:st
  const contactPersons=await persons(read,contactId);
  return{contact,contactPersons,revision:await sha256(new TextEncoder().encode(stable({contact,contactPersons})))};
 }
-function fields(a:any,create:boolean){
+function fields(a:any,create:boolean,country=a.countryCode??'DK'){
  if(a.domainName!==undefined)throw new NoWriteError('domainName has no verified native mapping; omit it');
- if(a.countryCode!==undefined&&a.countryCode!=='DK')throw new NoWriteError('Phase 1 supports DK contacts only');
+ z.string().regex(/^[A-Z]{2}$/).parse(country);
+ if(country!=='DK'&&a.cvr!==undefined)throw new NoWriteError('cvr is DK-only; supply foreign vatNumber');
  const out:any={};
- if(create||a.countryCode!==undefined)out.countryId='DK';
+ if(create||a.countryCode!==undefined)out.countryId=country;
  if(a.name!==undefined){z.string().min(1).max(100).refine(s=>s.trim()===s&&!/[\u0000-\u001f]/.test(s)).parse(a.name);out.name=a.name;}
  if(a.roles!==undefined){z.array(z.enum(['customer','supplier'])).min(1).max(2).refine(v=>new Set(v).size===v.length).parse(a.roles);out.isCustomer=a.roles.includes('customer');out.isSupplier=a.roles.includes('supplier');}
  if(create&&(out.name===undefined||a.roles===undefined))throw new NoWriteError('Name and roles are required');
  for(const [input,native] of [['street','street'],['zip','zipcodeText'],['city','cityText']])if(a[input]!==undefined){z.string().max(input==='zip'?20:500).nullable().parse(a[input]);out[native]=a[input];}
  if(a.cvr!==undefined||a.vatNumber!==undefined){
-  const values=[a.cvr,a.vatNumber].filter(v=>v!==undefined).map(v=>v===null?null:reg(v));
-  if(values.some(v=>v!==null&&!/^\d{8}$/.test(v)))throw new NoWriteError('Danish registration numbers require eight digits (optional DK prefix)');
+  const values=[a.cvr,a.vatNumber].filter(v=>v!==undefined).map(v=>v===null?null:country==='DK'?reg(v):String(v).trim().toUpperCase().replace(/[\s-]/g,''));
+  if(values.some(v=>v!==null&&!(country==='DK'?/^\d{8}$/:/^[A-Z0-9]{2,30}$/).test(v)))throw new NoWriteError('Invalid registration format: DK requires eight digits; foreign identifiers require 2-30 letters/digits');
   if(values.length===2&&values[0]!==values[1])throw new NoWriteError('cvr and vatNumber map to one Billy field and must agree');
   out.registrationNo=values[0];
  }
@@ -61,18 +62,19 @@ export function contactHandler(read:BillyClient,write:BillyClient,db:JournalDB,o
  const create=tool==='create_test_contact';if(!create&&tool!=='update_test_contact')throw new NoWriteError('Unknown contact tool');
  z.string().uuid().parse(a.operationId);z.string().min(1).max(4000).parse(a.reasoning);
  if(!create){id.parse(a.id);z.string().min(1).parse(a.expectedRevision);}
- const patch=fields(a,create);
+ let patch:any;
  const {organization}=await read.get('/organization');if(organization?.id!==orgId)throw new NoWriteError('Test organization mismatch');
  // Serialize contact mutations in this worker to make duplicate checks effective across simultaneous calls.
  return jsonResult(await journalRun(db,orgId,a.operationId,'contacts',{action:tool,...a},async()=>{
  let before:any,person:any,candidate:any;
  try{
-  if(create)candidate={organizationId:orgId,...patch,contactNo:'mcp-test:'+a.operationId,type:'company'};
+  if(create){patch=fields(a,true);candidate={organizationId:orgId,...patch,contactNo:'mcp-test:'+a.operationId,type:'company'};}
   else{
    before=await contactSnapshot(read,orgId,a.id);
-   if(before.contact.isArchived||before.contact.countryId!=='DK'||!before.contact.contactNo?.startsWith('mcp-test:'))throw new NoWriteError('Only active test-tool-marked DK contacts may be updated');
+   if(before.contact.isArchived||!before.contact.contactNo?.startsWith('mcp-test:'))throw new NoWriteError('Only active test-tool-marked contacts may be updated');
    if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_contact again');
-   candidate={...before.contact,...patch};
+   if(a.countryCode!==undefined&&a.countryCode!==before.contact.countryId)throw new NoWriteError('Country changes require a separate reviewed migration');
+   patch=fields(a,false,before.contact.countryId);candidate={...before.contact,...patch};
    if(a.email!==undefined){
     const primary=before.contactPersons.filter((p:any)=>p.isPrimary===true);
     if(primary.length>1||primary.length===0&&before.contactPersons.length>1)throw new NoWriteError('Ambiguous email recipient; select a primary person in Billy first');
@@ -80,6 +82,7 @@ export function contactHandler(read:BillyClient,write:BillyClient,db:JournalDB,o
     if(a.email===null&&person&&!person.name?.trim())throw new NoWriteError('Cannot clear email of unnamed contact person; give it a name first');
    }
   }
+  if(candidate.countryId!=='DK'){const {country}=await read.get('/countries/'+candidate.countryId);if(country?.id!==candidate.countryId)throw new NoWriteError('Country not recognized by Billy');}
   await duplicates(read,orgId,candidate,a.email,create?undefined:a.id);
   if(!create&&(await contactSnapshot(read,orgId,a.id)).revision!==before.revision)throw new NoWriteError('Contact changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('Contact preflight failed. No write performed.');}
@@ -109,7 +112,7 @@ export function contactHandler(read:BillyClient,write:BillyClient,db:JournalDB,o
   }
   const expectedCount=create?(a.email?1:0):before.contactPersons.length+(!person&&a.email!==undefined&&a.email!==null?1:0);
   if(after.contactPersons.length!==expectedCount)throw new Error('Unexpected contact-person count');
-  return{...after,created:create,reasoning:a.reasoning,limitations:['DK only; domainName unsupported.','CVR format checked only, not registry-validated.','Duplicate/revision checks are optimistic against external Billy edits.']};
+  return{...after,created:create,reasoning:a.reasoning,limitations:['Country changes and domainName unsupported.','Registration format checked only; no registry or VIES validation.','Duplicate/revision checks are optimistic against external Billy edits.']};
  }catch(e){
   const match=(e instanceof Error?e.message:'').match(/failed with (\d+): ([\s\S]*)/);let errorMessage:string|undefined;
   try{const body=JSON.parse(match?.[2]??'{}');if(typeof body.errorMessage==='string')errorMessage=body.errorMessage.slice(0,300);}catch{}
