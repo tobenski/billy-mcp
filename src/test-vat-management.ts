@@ -45,15 +45,15 @@ export async function closeBooking(read:BillyClient,db:JournalDB,orgId:string,a:
 }
 export async function settleVat(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,a:any){
  await identity(read,orgId);
- // Recover only the observed zero-return transition, proving the original revision.
+ // Recover verified zero/nonzero settlement transitions by reconstructing the exact original revision.
  const journalId=orgId+':'+a.operationId;
  const pending=await db.prepare('SELECT fingerprint, state, result, target FROM operations WHERE id = ?').bind(journalId).first<{fingerprint:string;state:string;target:string}>();
  if(pending?.state==='pending'){
  const fingerprint=canonical({action:'set_test_vat_return_settlement',...a});
  if(pending.fingerprint!==fingerprint||pending.target!==orgId+':vatreturn:'+a.returnId)throw Error('Pending settlement input mismatch');
  const after=await vatPeriod(read,orgId,a.returnId),r=after.salesTaxReturn;
- if(a.isSettled!==true||r.isSettled!==true||r.totalAmount!==0||r.settledAmount!==0||r.isPaid!==false||r.skatTransactionId!=null||after.salesTaxPayments.length)throw Error('Pending settlement cannot be recovered automatically');
- const previous={salesTaxReturn:{...r,isSettled:false,settledAmount:null},salesTaxPayments:after.salesTaxPayments};
+ if(a.isSettled!==true||r.isSettled!==true||typeof r.totalAmount!=='number'||!Number.isFinite(r.totalAmount)||r.totalAmount!==0&&r.isPayable!==true||r.settledAmount!==Math.abs(r.totalAmount)||r.isPaid!==false||r.skatTransactionId!=null||after.salesTaxPayments.length)throw Error('Pending settlement cannot be recovered automatically');
+ const previous={salesTaxReturn:{...r,isSettled:false,settledAmount:null,...(r.totalAmount!==0?{isPayable:false}:{})},salesTaxPayments:after.salesTaxPayments};
  if(await hash(previous)!==a.expectedRevision||(await vatPeriod(read,orgId,a.returnId)).revision!==after.revision)throw Error('Pending settlement evidence differs from original revision');
  const result={before:{...previous,revision:a.expectedRevision,authoritySubmission:'not_verified'},after,reasoning:a.reasoning,authoritySubmission:'not_performed',payment:'not_performed',recovery:{previousState:'pending',nativeWrites:0}};
  const saved=await db.prepare("UPDATE operations SET state = 'complete', result = ? WHERE id = ? AND state = 'pending' AND fingerprint = ? AND target = ?").bind(JSON.stringify(result),journalId,fingerprint,pending.target).run();
@@ -72,8 +72,9 @@ export async function settleVat(read:BillyClient,write:BillyClient,db:JournalDB,
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('VAT period preflight failed; no write performed');}
  await write.put('/salesTaxReturns/'+a.returnId,{salesTaxReturn:{isSettled:a.isSettled}});
  const after=await vatPeriod(read,orgId,a.returnId);
- const withoutState=(r:any)=>{const {isSettled,settledAmount,updatedTime,...rest}=r;return rest;};
- if(a.isSettled?after.salesTaxReturn.settledAmount!==before.salesTaxReturn.totalAmount:after.salesTaxReturn.settledAmount!==null&&after.salesTaxReturn.settledAmount!==before.salesTaxReturn.settledAmount)throw Error('Unexpected settled amount');
+ const withoutState=(r:any)=>{const {isSettled,settledAmount,updatedTime,...rest}=r;if(before.salesTaxReturn.totalAmount!==0)delete rest.isPayable;return rest;};
+ if(before.salesTaxReturn.totalAmount!==0&&after.salesTaxReturn.isPayable!==a.isSettled)throw Error('Unexpected payable state');
+ if(a.isSettled?after.salesTaxReturn.settledAmount!==Math.abs(before.salesTaxReturn.totalAmount):after.salesTaxReturn.settledAmount!==null&&after.salesTaxReturn.settledAmount!==before.salesTaxReturn.settledAmount)throw Error('Unexpected settled amount');
  if(after.salesTaxReturn.isSettled!==a.isSettled||canonical(withoutState(after.salesTaxReturn))!==canonical(withoutState(before.salesTaxReturn))||canonical(after.salesTaxPayments)!==canonical(before.salesTaxPayments))throw Error('Unexpected VAT settlement readback; inspect operation');
  return {before,after,reasoning:a.reasoning,authoritySubmission:'not_performed',payment:'not_performed'};
  });
