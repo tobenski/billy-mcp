@@ -1,4 +1,4 @@
-import {configureManualCorrections} from './test-manual-corrections.js';
+import {configureManualCorrections,configureManualDrafts} from './test-manual-corrections.js';
 import {guardedJournal,guardedWriteClient} from './test-write-attempts.js';
 import {ossConfigurationHandler} from './test-oss-configuration.js';
 import {historicalRateHandler} from './test-historical-rates.js';
@@ -35,7 +35,7 @@ import { registerRoadmapTools } from './test-roadmap.js';
 import { createReadOnlyServer, READ_TOOLS } from './worker-server.js';
 
 // Deployment-only configuration; never supplied by an MCP caller.
-interface TestEnv { BILLY_TEST_MANUAL_CORRECTION_IDS?: string; BILLY_TEST_GUARDED_WRITES?: string; BILLY_API_KEY?: string; ALLOWED_EMAILS?: string; BILLY_TEST_ORGANIZATION_ID?: string; TEST_WRITE_JOURNAL?: JournalDB; BILLY_TEST_DRAFT_WRITES?: string }
+interface TestEnv { BILLY_TEST_MANUAL_DRAFT_IDS?: string; BILLY_TEST_MANUAL_CORRECTION_IDS?: string; BILLY_TEST_GUARDED_WRITES?: string; BILLY_API_KEY?: string; ALLOWED_EMAILS?: string; BILLY_TEST_ORGANIZATION_ID?: string; TEST_WRITE_JOURNAL?: JournalDB; BILLY_TEST_DRAFT_WRITES?: string }
 
 // One client per MCP request. Every data read first verifies the actual token;
 // an organization query parameter is never used as proof of token identity.
@@ -141,10 +141,10 @@ export default {
     const guard=env.BILLY_TEST_GUARDED_WRITES==='enabled';
     const journal=env.TEST_WRITE_JOURNAL&&(guard?guardedJournal(env.TEST_WRITE_JOURNAL):env.TEST_WRITE_JOURNAL);
     const wrapWrite=(client:BillyClient)=>guard?guardedWriteClient(client):client;
-    const handler = createMcpHandler(() => createTestServer(configureManualCorrections(new TestBillyClient({
+    const handler = createMcpHandler(() => createTestServer(configureManualDrafts(configureManualCorrections(new TestBillyClient({
       accessToken: env.BILLY_API_KEY!, readOnly: true,
       signal: request.signal, requestTimeoutMs: 15000,
-    }, expectedId), expectedId, env.BILLY_TEST_MANUAL_CORRECTION_IDS), expectedId, writesEnabled ? wrapWrite(new BillyClient({
+    }, expectedId), expectedId, env.BILLY_TEST_MANUAL_CORRECTION_IDS), expectedId, env.BILLY_TEST_MANUAL_DRAFT_IDS), expectedId, writesEnabled ? wrapWrite(new BillyClient({
       accessToken: env.BILLY_API_KEY!, readOnly: false, signal: request.signal, requestTimeoutMs: 15000,
     })) : undefined, journal, env.BILLY_API_KEY, request.signal, selectedTool));
     const response = await handler.fetch(request);
