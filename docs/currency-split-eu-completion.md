@@ -1,3 +1,5 @@
+> Current scope: [partial payments and multiline checkpoint](partial-payments-multiline.md). Earlier counts and full-payment/single-line restrictions below are historical.
+
 > Updated by [autonomous final audit](autonomous-final-audit.md): historical reference rates and OSS configuration evidence are now available; the four-reserved-contract count below is historical.
 
 # Currency, bank split and native EU-sales continuation — 2026-10-31
