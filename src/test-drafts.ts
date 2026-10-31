@@ -1,3 +1,4 @@
+import {manualDraftAllowed} from './test-manual-corrections.js';
 import {guardedJournalRun} from './test-write-attempts.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
@@ -91,7 +92,7 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
   }
   async function draft(recordId: string, expectedDescription: string) {
     const { daybookTransaction: row } = await read.get('/daybookTransactions/' + recordId);
-    if (!row || row.organizationId !== orgId || row.state !== 'draft' || !row.apiType?.startsWith('mcp-test:')) throw new NoWriteError('Only test-tool-created drafts in this organization may be changed or deleted.');
+    if (!row || row.organizationId !== orgId || row.state !== 'draft' || (!row.apiType?.startsWith('mcp-test:')&&!manualDraftAllowed(read,orgId,row))) throw new NoWriteError('Only test-tool-created drafts in this organization may be changed or deleted.');
     if ((row.description ?? '') !== expectedDescription) throw new NoWriteError('Draft description changed; read it again before writing.');
     return row;
   }
