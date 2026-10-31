@@ -1,3 +1,4 @@
+import {guardedJournalRun} from './test-write-attempts.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 import { BillyClient } from './billy-client.js';
@@ -5,6 +6,7 @@ import { errorResult, jsonResult } from './tools/helpers.js';
 
 // Only the isolated test Worker imports this module.
 export interface JournalDB {
+  guardedWrites?: boolean;
   prepare(sql: string): { bind(...values: unknown[]): { first<T>(): Promise<T | null>; run(): Promise<{ success: boolean; meta: { changes?: number } }> } };
 }
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
@@ -35,6 +37,7 @@ function canonical(value: any): string {
   return JSON.stringify(value);
 }
 export async function journalRun(db: JournalDB, org: string, key: string, target: string, payload: unknown, action: () => Promise<unknown>) {
+  if(db.guardedWrites)return guardedJournalRun(db,org,key,target,payload,action);
   const fingerprint = canonical(payload);
   const journalId = org + ':' + key;
   const prior = () => db.prepare('SELECT fingerprint, state, result FROM operations WHERE id = ?').bind(journalId).first<Row>();
@@ -106,12 +109,13 @@ export function registerTestDraftTools(server: McpServer, read: BillyClient, wri
     await identity();
     const row = await db.prepare('SELECT fingerprint, state, result FROM operations WHERE id = ?').bind(orgId + ':' + operationId).first<Row>();
     if(!row)return {operationId,state:'not_found'};
+    const attempt=db.guardedWrites?await db.prepare('SELECT write_phase, lease_until FROM operations WHERE id = ?').bind(orgId+':'+operationId).first<any>():null;
     const input=JSON.parse(row.fingerprint);
     let currentEvidence:any;
     const saved=row.result?JSON.parse(row.result):null;
     try{const {inspectWriteOperation}=await import('./test-operation-inspection.js');currentEvidence=await inspectWriteOperation(read,orgId,input,saved);}
     catch{currentEvidence={available:false,outcome:'undetermined',safeToRetry:false,reason:'Current evidence could not be verified. Saved journal state and pending lock are unchanged.'};}
-    return {operationId,state:saved?.disposition==='abandoned'?'abandoned':row.state,storageState:row.state,retryBlocked:row.state==='pending',input,result:saved,resultIsHistorical:true,currentEvidence};
+    return {operationId,...(attempt?{attempt:{phase:attempt.write_phase,leaseUntil:attempt.lease_until,resumeWithSameInput:row.state==='pending'&&attempt.write_phase==='prepared'&&attempt.lease_until<Date.now()}}:{}),state:saved?.disposition==='abandoned'?'abandoned':row.state,storageState:row.state,retryBlocked:row.state==='pending',input,result:saved,resultIsHistorical:true,currentEvidence};
   }));
   server.registerTool('create_test_daybook_draft', {
     description: 'Create a balanced draft in the locked test organization, then read its header and all lines. Base currency only, no tax or contra-account shortcuts. Requires a unique operation UUID; reuse exactly the same UUID/input after a lost response. Never books the draft.',
