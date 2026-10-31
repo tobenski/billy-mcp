@@ -77,8 +77,8 @@ export function paymentHandler(read:BillyClient,write:BillyClient|undefined,db:J
  const undo=name==='void_test_document_payment',kind=name==='record_test_invoice_payment'?'invoice':'bill';if(!paymentDescriptions[name])throw new NoWriteError('Unknown action');id.parse(undo?a.paymentId:a.id);
  const {organization}=await read.get('/organization');if(organization?.id!==org||organization.baseCurrencyId!=='DKK')throw new NoWriteError('Organization mismatch');
  const journalId=org+':'+a.operationId,target=org+':'+(undo?'payment:'+a.paymentId:kind+':'+a.id),fingerprint=canonical({action:name,...a});
- const prior=await db.prepare('SELECT fingerprint, state, result, target FROM operations WHERE id = ?').bind(journalId).first<any>();
- if(prior?.state==='pending'){
+ const prior=await db.prepare('SELECT fingerprint, state, result, target'+(db.guardedWrites?', write_phase':'')+' FROM operations WHERE id = ?').bind(journalId).first<any>();
+ if(prior?.state==='pending'&&prior.write_phase!=='prepared'){
  if(prior.fingerprint!==fingerprint||prior.target!==target)throw Error('Pending payment input mismatch');const e=JSON.parse(prior.result??'null');if(e?.stage!=='before_document_payment')throw Error('Missing preserved payment evidence');
  let paymentId=a.paymentId;if(!undo){const payments=await read.fetchAll('/bankPayments','bankPayments',{organizationId:org});const candidates=payments.filter(p=>!e.priorPaymentIds.includes(p.id)&&p.organizationId===org&&p.cashAccountId===e.accountId&&p.entryDate===e.entryDate&&p.contactId===e.beforeDocument[e.kind].contactId&&p.cashSide===(e.kind==='invoice'?'debit':'credit')&&cents(p.cashAmount)===e.amount);if(candidates.length!==1)throw Error('Payment creation is not uniquely proved; no native retry');paymentId=candidates[0].id;}
  const after=await paymentSnapshot(read,org,paymentId),result=completedPayment(after,e,a.reasoning);if((await paymentSnapshot(read,org,paymentId)).revision!==after.revision)throw Error('Payment changed during recovery');
