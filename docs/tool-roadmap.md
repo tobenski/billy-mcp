@@ -1590,3 +1590,7 @@ Eksisterende `fee`-input i splitafstemningen verificerer nu en komplet, særskil
 ### Genoptagelse af leverandørkreditnota
 
 Oprettelse gemmer nu dokument- og requestgrundlag før native write. Samme pending operation kan afsluttes uden native writes efter fuld kontrol af en entydigt oprettet kreditnota og uændret kilde. Se [valideringen](supplier-credit-recovery.md).
+
+### Delkreditering i valuta
+
+Enkeltlinjeregninger og bruttofakturaer i valuta understøtter nu sekventielle delkreditter, når kildebeløb og DKK-udgift/omsætning, moms og kontrolkonto bevares præcist. Ikke-bevarende afrunding afvises før oprettelse. Kunde- og leverandørforløb er live-testet og fuldt udlignet. Se [afgrænsning og kontrol](foreign-partial-credits.md).
