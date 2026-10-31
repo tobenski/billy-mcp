@@ -1,5 +1,5 @@
 import * as z from 'zod/v4';
-// Reserved interfaces only. No client, credentials, journal or side effects.
+// Contract catalog. Handlers are attached explicitly by the test Worker; unattached contracts fail closed.
 const id=z.string().min(1).max(100), date=z.iso.date(), currency=z.string().regex(/^[A-Z]{3}$/);
 const write={operationId:z.string().uuid(),reasoning:z.string().min(1).max(4000)};
 const revision={expectedRevision:z.string().min(1)};
@@ -8,6 +8,9 @@ const line=z.object({description:z.string().min(1),accountId:id,productId:id.opt
 const document={contactId:id,entryDate:date,dueDate:date,currencyId:currency,exchangeRate:z.number().positive().optional(),description:z.string().min(1),lines:z.array(line).min(1).max(100),attachmentIds:z.array(id).max(5).optional()};
 const def=(name:string,purpose:string,shape:z.ZodRawShape,mutation=false,destructive=false)=>({name,purpose,schema:z.object(shape).strict(),mutation,destructive});
 export const futureTools=[
+ def('create_test_product','Create a journal-marked test product with explicit revenue account and tax ruleset.',{...write,name:z.string().regex(/^TEST /).max(100),description:z.string().max(4000).optional(),accountId:id,salesTaxRulesetId:id},true),
+ def('update_test_product','Update explicit fields on a journal-proven test product; preserve prices.',{...write,...revision,id,name:z.string().regex(/^TEST /).max(100).optional(),description:z.string().max(4000).nullable().optional(),accountId:id.optional(),salesTaxRulesetId:id.optional()},true),
+ def('archive_test_product','Archive/restore a journal-proven test product without deletion.',{...write,...revision,id,isArchived:z.boolean()},true),
  ...(['invoice','bill'] as const).flatMap(kind=>[
   def(`create_test_${kind}_draft`,`Create a test ${kind} draft with explicit contact, currency, tax and lines. Native mapping/readback not yet implemented; never sends documents.`,{...write,...document},true),
   def(`update_test_${kind}_draft`,`Replace supplied fields of a test ${kind} draft, preserving unrelated data. Native revision and readback not yet implemented.`,{...write,...revision,id,...Object.fromEntries(Object.entries(document).map(([k,s])=>[k,s.optional()]))},true),
