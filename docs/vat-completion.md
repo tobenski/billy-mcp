@@ -24,6 +24,6 @@ Open cross-period reversal was tested with +150 DKK in Q3 and -150 DKK in Q4; ex
 
 ## Remaining separate capabilities
 
-Actual authority submission is not implemented or performed. OSS configuration/reporting and customer-level EU-sales listing have reserved contracts, with no verified native reporting endpoint. Recorded invoice/bill/VAT payments, payment exchange differences and split bank allocations are reserved. Stubs are not live implementations. Current rate metadata is not historical invoice-rate evidence.
+Actual authority submission is not implemented or performed. OSS configuration/reporting and customer-level EU-sales listing have reserved contracts, with no verified native reporting endpoint. Full DKK invoice/bill payments and settled VAT payments/refunds, including native void, are now live-verified on the fixed offline test account; see document-payments.md and vat-payment-lifecycle.md. Payment exchange differences and split bank allocations remain separate work. Stubs are not live implementations. Current rate metadata is not historical invoice-rate evidence.
 
 Production and real bank integration accounts were not changed. Optimistic checks cannot lock out concurrent Billy UI edits; uncertain writes retain their journal lock.
