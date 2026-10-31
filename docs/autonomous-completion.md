@@ -1,3 +1,5 @@
+> Latest: [invoice lifecycle acceptance](invoice-lifecycle.md), including product acceptance and fully offset invoice/credit booking.
+
 > Follow-up: [supplier drafts, contact archive and product dependency](document-lifecycle-progress.md). The report below records the preceding 108-tool batch, not the latest 111-tool state.
 
 # Autonomous completion and capability audit — 2026-10-31
