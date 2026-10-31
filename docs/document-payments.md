@@ -1,3 +1,5 @@
+> Superseded scope: [foreign document payments, FX protection and bank splits](currency-split-eu-completion.md) are now implemented with documented restrictions.
+
 # Supplier acceptance and recorded document payments — 2026-10-31
 
 Supplier booking/full credit and recorded invoice/bill payment with reversal are now live-verified. No messages, real transfers, production changes or writes to connected bank5711 occurred. Discovery stays114 names. All 321 automated tests pass, with TypeScript checking and Worker build.
