@@ -1,3 +1,4 @@
+import {manualDraftAllowed} from './test-manual-corrections.js';
 import {canonical} from './test-vat-management.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
@@ -89,7 +90,7 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     }
     return journalRun(db,orgId,operationId,daybookTransactionId,payload,async()=>{
       const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
-      if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Only test-tool-created drafts may receive attachments');
+      if(draft?.organizationId!==orgId||draft.state!=='draft'||(!draft.apiType?.startsWith('mcp-test:')&&!manualDraftAllowed(read,orgId,draft)))throw new NoWriteError('Only test-tool-created drafts may receive attachments');
       if((draft.description??'')!==expectedDescription)throw new NoWriteError('Draft description changed; read again');
       const existing=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
       if(existing.some((a:any)=>a.ownerReference!==ownerReference))throw new NoWriteError('Unexpected attachment owner in response');
@@ -113,7 +114,7 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     await identity();const ownerReference='daybookTransaction:'+daybookTransactionId;
     return journalRun(db,orgId,operationId,daybookTransactionId,{action:'reuse_inbox',attachmentId,daybookTransactionId,expectedDescription},async()=>{
       const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
-      if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:')||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
+      if(draft?.organizationId!==orgId||draft.state!=='draft'||(!draft.apiType?.startsWith('mcp-test:')&&!manualDraftAllowed(read,orgId,draft))||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
       const {attachment:source}=await read.get('/attachments/'+attachmentId);
       if(source?.organizationId!==orgId||source.ownerReference||!id.safeParse(source.fileId).success)throw new NoWriteError('Source must be an unhandled attachment in the test organization');
       const before=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
@@ -139,7 +140,7 @@ export function registerTestFileTools(server:McpServer, read:BillyClient, write:
     await identity();const ownerReference='daybookTransaction:'+daybookTransactionId;
     return journalRun(db,orgId,operationId,daybookTransactionId,{action:'remove_attachment',attachmentId,daybookTransactionId,expectedDescription},async()=>{
       const {daybookTransaction:draft}=await read.get('/daybookTransactions/'+daybookTransactionId);
-      if(draft?.organizationId!==orgId||draft.state!=='draft'||!draft.apiType?.startsWith('mcp-test:')||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
+      if(draft?.organizationId!==orgId||draft.state!=='draft'||(!draft.apiType?.startsWith('mcp-test:')&&!manualDraftAllowed(read,orgId,draft))||(draft.description??'')!==expectedDescription)throw new NoWriteError('Expected test draft was not found or has changed');
       const {attachment}=await read.get('/attachments/'+attachmentId);
       if(attachment?.organizationId!==orgId||attachment.ownerReference!==ownerReference||!id.safeParse(attachment.fileId).success)throw new NoWriteError('Attachment does not belong to this test draft');
       const before=await read.fetchAll('/attachments','attachments',{organizationId:orgId,ownerReference});
