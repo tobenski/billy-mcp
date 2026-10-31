@@ -1,3 +1,4 @@
+import {guardedJournal,guardedWriteClient} from './test-write-attempts.js';
 import {ossConfigurationHandler} from './test-oss-configuration.js';
 import {historicalRateHandler} from './test-historical-rates.js';
 import {euSalesHandler} from './test-eu-sales.js';
@@ -30,10 +31,10 @@ import { documentHandler } from './test-documents.js';
 import { extendedHandler, draftSnapshot } from './test-extended-drafts.js';
 import { errorResult, jsonResult } from './tools/helpers.js';
 import { registerRoadmapTools } from './test-roadmap.js';
-import { createReadOnlyServer } from './worker-server.js';
+import { createReadOnlyServer, READ_TOOLS } from './worker-server.js';
 
 // Deployment-only configuration; never supplied by an MCP caller.
-interface TestEnv { BILLY_API_KEY?: string; ALLOWED_EMAILS?: string; BILLY_TEST_ORGANIZATION_ID?: string; TEST_WRITE_JOURNAL?: JournalDB; BILLY_TEST_DRAFT_WRITES?: string }
+interface TestEnv { BILLY_TEST_GUARDED_WRITES?: string; BILLY_API_KEY?: string; ALLOWED_EMAILS?: string; BILLY_TEST_ORGANIZATION_ID?: string; TEST_WRITE_JOURNAL?: JournalDB; BILLY_TEST_DRAFT_WRITES?: string }
 
 // One client per MCP request. Every data read first verifies the actual token;
 // an organization query parameter is never used as proof of token identity.
@@ -68,8 +69,14 @@ class TestBillyClient extends BillyClient {
   }
 }
 
-function createTestServer(billy: BillyClient, expectedId: string, write?: BillyClient, db?: JournalDB, integrationToken?:string, integrationSignal?:AbortSignal): McpServer {
+function createTestServer(billy: BillyClient, expectedId: string, write?: BillyClient, db?: JournalDB, integrationToken?:string, integrationSignal?:AbortSignal, selectedTool?:string): McpServer {
   const server = new McpServer({ name: 'billy-test', version: '0.5.0' });
+  // tools/call needs only its selected schema. Keep discovery complete and
+  // request-scoped clients; never cache credentials, identities or journals.
+  if(selectedTool){
+    const register=server.registerTool.bind(server);
+    server.registerTool=((name:any,config:any,handler:any)=>name===selectedTool?register(name,config,handler):({remove(){}})) as typeof server.registerTool;
+  }
   server.registerTool('get_test_organization', {
     title: 'Vis testregnskab',
     description: 'Verify the connected Billy token against the fixed test organization ID. Returns identity and whether isolated draft writes are enabled.',
@@ -104,7 +111,7 @@ function createTestServer(billy: BillyClient, expectedId: string, write?: BillyC
     const register=server.registerTool.bind(server);
     server.registerTool=((name:any,config:any,handler:any)=>name==='get_invoice'?register(name,{...config,description:config.description+' Test-write mode returns all native lines/attachments and revision; line paging inputs are ignored.'},async({id}:any)=>{try{return jsonResult(await invoiceSnapshot(billy,expectedId,id));}catch(e){return errorResult(e);}}):name==='get_product'?register(name,{...config,description:config.description+' Test-write mode includes all native prices and revision.'},async({id}:any)=>{try{return jsonResult(await productSnapshot(billy,expectedId,id));}catch(e){return errorResult(e);}}):name==='get_bill'?register(name,{...config,description:config.description+' In test-write mode returns all native lines/attachments and revision for draft tools; page arguments are ignored.'},async({id}:any)=>{try{return jsonResult(await billSnapshot(billy,expectedId,id));}catch(e){return errorResult(e);}}):name==='get_contact'?register(name,{...config,description:config.description+' In test-write mode includes all contact persons and revision for safe updates.'},async({id}:any)=>{try{return jsonResult(await contactSnapshot(billy,expectedId,id));}catch(e){return errorResult(e);}}):name==='get_transaction'?register(name,{...config,description:config.description+' Returns correction eligibility/revision plus reviews and separate reviewRevision for review changes. reviewSource contains the reviewed evidence.'},async({id}:any)=>{try{return jsonResult({...await transactionWithRevision(billy,expectedId,id),...await reviewRead(billy,db,expectedId,'transaction',id)});}catch(e){return errorResult(e);}}):name==='get_daybook_transaction'?register(name,{...config,description:config.description+' In test-write mode also returns all lines, attachments and an optimistic revision for extended updates.'},async({id}:any)=>{try{return jsonResult(await draftSnapshot(billy,id,expectedId));}catch(e){return errorResult(e);}}):register(name,config,handler)) as typeof server.registerTool;
   }
-  return createReadOnlyServer(billy, server);
+  return selectedTool && !READ_TOOLS.has(selectedTool) ? server : createReadOnlyServer(billy, server, selectedTool);
 }
 
 export default {
@@ -126,12 +133,19 @@ export default {
       });
     }
     if (path !== '/mcp') return denied('Not found', 404);
+    let selectedTool:string|undefined;
+    if(request.method==='POST'){
+      try{const body:any=await request.clone().json();if(body?.method==='tools/call'&&typeof body.params?.name==='string'&&body.params.name.length<=200)selectedTool=body.params.name;}catch{/* MCP handles malformed requests. */}
+    }
+    const guard=env.BILLY_TEST_GUARDED_WRITES==='enabled';
+    const journal=env.TEST_WRITE_JOURNAL&&(guard?guardedJournal(env.TEST_WRITE_JOURNAL):env.TEST_WRITE_JOURNAL);
+    const wrapWrite=(client:BillyClient)=>guard?guardedWriteClient(client):client;
     const handler = createMcpHandler(() => createTestServer(new TestBillyClient({
       accessToken: env.BILLY_API_KEY!, readOnly: true,
       signal: request.signal, requestTimeoutMs: 15000,
-    }, expectedId), expectedId, writesEnabled ? new BillyClient({
+    }, expectedId), expectedId, writesEnabled ? wrapWrite(new BillyClient({
       accessToken: env.BILLY_API_KEY!, readOnly: false, signal: request.signal, requestTimeoutMs: 15000,
-    }) : undefined, env.TEST_WRITE_JOURNAL, env.BILLY_API_KEY, request.signal));
+    })) : undefined, journal, env.BILLY_API_KEY, request.signal, selectedTool));
     const response = await handler.fetch(request);
     const headers = new Headers(response.headers);
     headers.set('Cache-Control', 'no-store');
