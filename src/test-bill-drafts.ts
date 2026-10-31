@@ -1,3 +1,4 @@
+import {attachmentOnly,updateDocumentAttachments} from './test-document-attachments.js';
 import {sourceCurrencies,isForeignCurrency} from './test-currency.js';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
@@ -11,7 +12,7 @@ const cents=(n:any)=>{if(typeof n!=='number'||!Number.isFinite(n)||n<=0||n>1e6||
 const sorted=(rows:any[])=>[...rows].sort((a,b)=>a.id.localeCompare(b.id));
 export const billDraftDescriptions:Record<string,string>={
  create_test_bill_draft:'Create a test supplier-bill draft in DKK/EUR/USD/GBP/SEK/NOK with explicit gross lines (maximum 20 lines/eight accounts/eight VAT codes), quantity 1 and validated standard purchase VAT. Foreign currency requires explicit native exchangeRate; no rate is selected. Contact must be an active test supplier. Description is an audit note in the operation journal, not a native bill field. Adds owned attachment-file links. Does not book or pay. Returns native bill, all lines/files and revision.',
- update_test_bill_draft:'Update date/dueDate, replace all gross lines or add attachment links on a journal-proven test supplier-bill draft. Description is an operation-journal note only. Contact, currency and rate cannot change. Fresh get_bill revision required. Does not book or pay.',
+ update_test_bill_draft:'Attachment-only input also adds files to journal-proven draft or approved bills/credit notes without financial edits; exact pending replay can verify a completed attachment write. Update date/dueDate, replace all gross lines or add attachment links on a journal-proven test supplier-bill draft. Description is an operation-journal note only. Contact, currency and rate cannot change. Fresh get_bill revision required. Does not book or pay.',
  delete_test_bill_draft:'Delete a journal-proven test supplier-bill draft after fresh revision and state checks. Verifies native deletion; never deletes source files or approved bills. Persistent operation replay.',
 };
 export async function billSnapshot(read:BillyClient,org:string,billId:string){
@@ -31,6 +32,7 @@ const comparableLines=(ls:any[])=>ls.map(l=>canonical({accountId:l.accountId,des
 function supported(b:any,credit=false){if(b.state!=='draft'||!(credit?['bill','creditNote']:['bill']).includes(b.type)||b.taxMode!=='incl'||!sourceCurrencies.includes(b.currencyId)||typeof b.exchangeRate!=='number'||!Number.isFinite(b.exchangeRate)||b.exchangeRate<=0||b.currencyId==='DKK'&&b.exchangeRate!==1||(!credit&&b.creditedBillId)||b.paymentAccountId||b.isPaid!==false)throw new NoWriteError('Only unpaid supported-currency draft bills without payment/credit links supported');}
 function normalize(ls:any[]){if(!Array.isArray(ls)||!ls.length||ls.length>20)throw new NoWriteError('Supply 1-20 lines');return ls.map(l=>{id.parse(l.accountId);if(l.quantity!==1||l.productId!==undefined||l.amountBasis!=='gross')throw new NoWriteError('Bill lines require quantity 1, gross basis and no productId');cents(l.unitPrice);z.string().min(1).max(500).parse(l.description);if(l.taxRateId!==null)id.parse(l.taxRateId);return{accountId:l.accountId,description:l.description,amount:l.unitPrice,taxRateId:l.taxRateId};});}
 export function billDraftHandler(read:BillyClient,write:BillyClient,db:JournalDB,org:string,name:string){return async(a:any)=>{try{
+ if(name==='update_test_bill_draft'&&attachmentOnly(a))return jsonResult(await updateDocumentAttachments(read,write,db,org,'bill',a,()=>billSnapshot(read,org,a.id),h=>billProvenance(db,org,h)));
  const creating=name==='create_test_bill_draft',deleting=name==='delete_test_bill_draft';if(!billDraftDescriptions[name])throw new NoWriteError('Unsupported bill action');
  z.string().uuid().parse(a.operationId);z.string().min(1).max(4000).parse(a.reasoning);
  if(!creating){id.parse(a.id);z.string().min(1).parse(a.expectedRevision);}
