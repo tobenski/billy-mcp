@@ -16,7 +16,7 @@ function journal() {
         if (rows.has(a[0]) || [...rows.values()].some(r => r.target === a[2] && r.state === 'pending')) return {success:true,meta:{changes:0}};
         rows.set(a[0], {fingerprint:a[1],target:a[2],state:'pending',result:null});
       } else if (sql.startsWith('DELETE')) { rows.delete(a[0]);
-      } else { const row=rows.get(a[1]); if (!row) return {success:true,meta:{changes:0}}; if(sql.includes("state = 'complete'"))row.state='complete'; row.result=a[0]; }
+      } else { const row=rows.get(a[1]); if (!row) return {success:true,meta:{changes:0}}; if(sql.includes('AND result IS ?')&&(row.state!=='pending'||row.result!==a[2]))return {success:true,meta:{changes:0}}; if(sql.includes("state = 'complete'"))row.state='complete'; row.result=a[0]; }
       return {success:true,meta:{changes:1}};
     }
   }; } }; } };
@@ -144,4 +144,20 @@ test('uncertain native failures retain safe diagnostics and block replay without
  if(message.includes('403')){assert.equal(d.httpStatus,403);assert.equal(d.resource,'taxRates');assert.equal(d.method,'POST');}
  await assert.rejects(journalRun(db,orgId,key,'target',{action:'test'},action));assert.equal(calls,1);
  }
+});
+
+test('failure diagnostics preserve pre-write evidence and do not store upstream bodies',async()=>{
+ const db=journal(),evidence={stage:'before_document_payment',beforeDocument:{invoice:{id:'doc',balance:125.08}},priorPaymentIds:['old']};
+ await assert.rejects(journalRun(db,orgId,key,'doc',{action:'record_test_invoice_payment'},async()=>{
+ await db.prepare("UPDATE operations SET result = ? WHERE id = ? AND state = 'pending'").bind(JSON.stringify(evidence),orgId+':'+key).run();throw Error('Billy API POST /bankPayments failed with 422: SECRET native payload');
+ }));
+ const row:any=await db.prepare('SELECT result FROM operations WHERE id = ?').bind(orgId+':'+key).first();const saved=JSON.parse(row.result);const {diagnostic,...rest}=saved;assert.deepEqual(rest,evidence);assert.equal(diagnostic.httpStatus,422);assert.equal(diagnostic.safeToRetry,false);assert.equal(row.state,'pending');assert.ok(!row.result.includes('SECRET'));
+});
+
+
+test('diagnostic compare-and-swap never overwrites evidence changed concurrently',async()=>{
+ const base=journal(),newer=JSON.stringify({stage:'newer_evidence',nativeId:'committed'});
+ const db:any={prepare(sql:string){const prepared=base.prepare(sql);return{bind(...a:any[]){const bound=prepared.bind(...a);return{first:()=>bound.first(),async run(){if(sql.includes('AND result IS ?'))await base.prepare('UPDATE operations SET result = ? WHERE id = ?').bind(newer,orgId+':'+key).run();return bound.run();}};}};}};
+ await assert.rejects(journalRun(db,orgId,key,'target',{action:'test'},async()=>{throw Error('Billy API POST /bankPayments failed with 500: private');}));
+ const row:any=await base.prepare('SELECT result FROM operations WHERE id = ?').bind(orgId+':'+key).first();assert.equal(row.result,newer);assert.equal(row.state,'pending');
 });
