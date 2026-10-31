@@ -1,3 +1,4 @@
+import {configureManualDrafts} from '../src/test-manual-corrections.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {extendedHandler,draftSnapshot} from '../src/test-extended-drafts.js';
@@ -11,7 +12,7 @@ function harness(options:{append?:boolean;timeout?:boolean;attachmentTimeout?:bo
  const read:any={async get(p:string){if(p==='/organization')return{organization:{id:'org',baseCurrencyId:'DKK'}};if(p.startsWith('/attachments/'))return{attachment:{...source,id:p.split('/').pop()}};if(p.startsWith('/accounts/'))return{account:{organizationId:'org',currencyId:'DKK',systemRole:'purchaseTax',isBankAccount:false}};return{daybookTransaction:{...h}};},async fetchAll(p:string,k:string,q:any){if(p==='/taxRates')return structuredClone(rates);if(p==='/taxRateDeductionComponents')return[{taxRateId:q.taxRateId,source:'tax',share:1,accountId:'vataccount',...options.componentOverride}];return p==='/daybooks'?[{id:'book'}]:structuredClone(p==='/attachments'?attachments:lines);}};
  const save=(body:any)=>{const d=body.daybookTransaction;h={...h,...d,id:'draft'};delete h.lines;if(d.lines)lines=[...(options.append?lines:[]),...d.lines.map((l:any,i:number)=>({...l,...(options.dropTax?{taxRateId:null}:{}),id:'line'+i,daybookTransactionId:'draft'}))];};
  const write:any={async post(p:string,b:any){writes++;if(p==='/attachments'){if(options.attachmentTimeout)throw Error('attachment timeout');const attachment={...b.attachment,id:'added'+writes};attachments.push(attachment);return{attachments:[attachment]};}save(b);return{daybookTransactions:[h]};},async put(p:string,b:any){writes++;if(options.timeout)throw Error('timeout');save(b);}};
- return{call:(name:string,a:any)=>extendedHandler(read,write,db,'org',name)(a),snapshot:()=>draftSnapshot(read,'draft','org'),writes:()=>writes,header:()=>h,rows};
+ return{manual:(authorized:boolean)=>{h.apiType=null;lines=[{...lines[0],contraAccountId:'bank'}];configureManualDrafts(read,'org',authorized?'draft':undefined);},call:(name:string,a:any)=>extendedHandler(read,write,db,'org',name)(a),snapshot:()=>draftSnapshot(read,'draft','org'),writes:()=>writes,header:()=>h,rows};
 }
 const data=(r:any)=>JSON.parse(r.content[0].text);
 test('extended create/update replaces all lines, preserves attachment, returns revision and replays',async()=>{
@@ -67,3 +68,14 @@ test('EUR draft preserves explicit DKK amount, balances in DKK, updates and reje
 });
 
 test('EUR purchase VAT draft preserves gross source and DKK amounts and rejects unknown codes',async()=>{const h=harness();const r=await h.call('create_test_extended_draft',{...input,lines:[{accountId:'expense',amount:125.08,baseAmount:935.79,currencyId:'EUR',taxRateId:'purchase',amountBasis:'gross',side:'debit',text:'EUR VAT'},{accountId:'bank',amount:935.79,currencyId:'DKK',side:'credit',text:'DKK'}]});assert.notEqual(r.isError,true,JSON.stringify(r));assert.equal(data(r).result.daybookTransactionLines[0].baseAmount,935.79);});
+
+test('manual contra draft edits require scope and preserve origin and attachments',async()=>{
+ for(const authorized of [false,true]){
+  const h=harness();await h.call('create_test_extended_draft',input);h.manual(authorized);const before=await h.snapshot();
+  const a={id:'draft',operationId:keys[1],expectedRevision:before.revision,reasoning:'manual test',description:'Manual edited'};
+  const r=await h.call('update_test_extended_draft',a);assert.equal(r.isError===true,!authorized);
+  if(authorized){const after=await h.snapshot();assert.equal(after.daybookTransaction.apiType,null);assert.deepEqual(after.daybookTransactionLines,before.daybookTransactionLines);assert.deepEqual(after.attachments,before.attachments);
+   const replaced=await h.call('update_test_extended_draft',{...a,operationId:keys[2],expectedRevision:after.revision,lines:input.lines.map(l=>({...l,amount:250}))});assert.notEqual(replaced.isError,true,JSON.stringify(replaced));assert.equal(data(replaced).result.daybookTransactionLines.length,2);
+  }else assert.equal(h.writes(),1);
+ }
+});
