@@ -1,3 +1,4 @@
+import {isSplitMatch,splitBankHandler} from './test-bank-allocations.js';
 import type {BillyClient} from './billy-client.js';
 import {journalRun,NoWriteError,type JournalDB} from './test-drafts.js';
 import {draftSnapshot} from './test-extended-drafts.js';
@@ -44,7 +45,7 @@ export function bankHandler(read:BillyClient,orgId:string,name:string,write?:Bil
  if(name==='get_test_bank_line')return jsonResult(await bankSnapshot(read,orgId,a.id));
  if(!write||!db)throw new NoWriteError('Test writes disabled');
  id.parse(a.bankLineId);
- if(name==='unlink_test_bank_line'&&a.subjectReference?.startsWith('group:')){const {correctionGroupUnlink}=await import('./test-bank-correction-group.js');return correctionGroupUnlink(read,write,db,orgId,a);}
+ if(name==='unlink_test_bank_line'&&a.subjectReference?.startsWith('group:')){if(await isSplitMatch(read,db,orgId,a.matchId))return splitBankHandler(read,write,db,orgId,name)(a);const {correctionGroupUnlink}=await import('./test-bank-correction-group.js');return correctionGroupUnlink(read,write,db,orgId,a);}
  if(name==='reconcile_test_bank_line'&&a.subjects?.length>1){const {correctionGroupLink}=await import('./test-bank-correction-group.js');return correctionGroupLink(read,write,db,orgId,a);}
  if(name==='reconcile_test_bank_line'&&a.subjects?.[0]?.type==='transaction'||name==='unlink_test_bank_line'&&a.subjectReference?.startsWith('posting:')){const {postedBankHandler}=await import('./test-bank-posted.js');return postedBankHandler(read,write,db,orgId,name,a);}
  const linking=name==='reconcile_test_bank_line';
