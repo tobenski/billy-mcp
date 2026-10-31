@@ -73,8 +73,8 @@ export function invoiceBookingHandler(reader:BillyClient,write:BillyClient,db:Jo
  z.string().uuid().parse(a.operationId);z.string().min(1).parse(a.expectedRevision);z.string().min(1).max(4000).parse(a.reasoning);const book=name==='book_test_invoice_draft';if(!invoiceBookingDescriptions[name])throw new NoWriteError('Unknown action');id.parse(book?a.id:a.invoiceId);
  const {organization}=await read.get('/organization');if(organization?.id!==org||organization.baseCurrencyId!=='DKK')throw new NoWriteError('Organization mismatch or unsupported base currency');
  const fingerprint=canonical({action:name,...a}),target=org+':invoice:'+(book?a.id:a.invoiceId),journalId=org+':'+a.operationId;
- const pending=await db.prepare('SELECT fingerprint, state, result, target FROM operations WHERE id = ?').bind(journalId).first<any>();
- if(!book&&pending?.state==='pending'){
+ const pending=await db.prepare('SELECT fingerprint, state, result, target'+(db.guardedWrites?', write_phase':'')+' FROM operations WHERE id = ?').bind(journalId).first<any>();
+ if(!book&&pending?.state==='pending'&&pending.write_phase!=='prepared'){
  if(pending.fingerprint!==fingerprint||pending.target!==target)throw Error('Pending credit input mismatch');
  const source=await invoiceSnapshot(read,org,a.invoiceId);if(source.revision!==a.expectedRevision||!sequentialSource(source))throw Error('Credit recovery requires unchanged supported sequential source');
  const candidates=(await read.fetchAll('/invoices','invoices',{organizationId:org,invoiceNo:'TEST-'+a.operationId})).filter(i=>i.invoiceNo==='TEST-'+a.operationId);if(candidates.length!==1)throw Error('Credit creation is not uniquely proved; no native retry');
@@ -86,7 +86,7 @@ export function invoiceBookingHandler(reader:BillyClient,write:BillyClient,db:Jo
  if((await invoiceSnapshot(read,org,b.id)).revision!==source.revision||(await invoiceSnapshot(read,org,i.id)).revision!==after.revision)throw Error('Credit/source changed during recovery');
  const result={...after,sourceInvoiceId:b.id,reasoning:a.reasoning,booked:false,sent:false,recovery:{nativeWrites:0}};const r=await db.prepare("UPDATE operations SET state = 'complete', result = ? WHERE id = ? AND state = 'pending' AND fingerprint = ? AND target = ?").bind(JSON.stringify(result),journalId,fingerprint,target).run();if(!r.success||r.meta.changes!==1)throw Error('Journal changed during credit recovery');return jsonResult({operationId:a.operationId,replayed:false,result});
  }
- if(book&&pending?.state==='pending'){
+ if(book&&pending?.state==='pending'&&pending.write_phase!=='prepared'){
  if(pending.fingerprint!==fingerprint||pending.target!==target)throw Error('Pending booking input mismatch');const saved=JSON.parse(pending.result??'null');if(saved?.stage!=='before_invoice_booking'||saved.before.revision!==a.expectedRevision)throw Error('No recoverable invoice evidence');
  const after=await invoiceSnapshot(read,org,a.id);if(after.invoice.state!=='approved')throw Error('Booking not proven approved; no automatic retry');unchanged(saved.before,after);const ledger=await invoiceLedger(read,org,after,saved.configuration);if((await invoiceSnapshot(read,org,a.id)).revision!==after.revision)throw Error('Invoice changed during recovery');
  const result={...after,...ledger,reasoning:a.reasoning,recovery:{nativeWrites:0}};const r=await db.prepare("UPDATE operations SET state = 'complete', result = ? WHERE id = ? AND state = 'pending' AND fingerprint = ? AND target = ?").bind(JSON.stringify(result),journalId,fingerprint,target).run();if(!r.success||r.meta.changes!==1)throw Error('Journal changed during recovery');return jsonResult({operationId:a.operationId,replayed:false,result});
