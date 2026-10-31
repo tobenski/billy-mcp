@@ -1,3 +1,5 @@
+> Current scope: [partial payments and multiline checkpoint](partial-payments-multiline.md). Earlier counts and full-payment/single-line restrictions below are historical.
+
 > Latest audit: [historical rates, OSS configuration evidence and operation diagnostics](autonomous-final-audit.md). Two native contracts remain reserved with no user action requested.
 
 > Current checkpoint: [currency, split matching and native EU-sales](currency-split-eu-completion.md). Older counts and reserved-function lists below are historical.
