@@ -16,7 +16,7 @@ export async function vatPeriod(read:BillyClient,orgId:string,returnId:string){
  const {salesTaxReturn:r}=await read.get('/salesTaxReturns/'+returnId);
  if(r?.id!==returnId||r.organizationId!==orgId)throw new NoWriteError('Unexpected VAT period ownership');
  const payments=await read.fetchAll('/salesTaxPayments','salesTaxPayments',{returnId});
- if(payments.some((p:any)=>p.returnId!==returnId||p.organizationId!==orgId))throw new NoWriteError('Unexpected VAT payment ownership');
+ if(payments.some((p:any)=>p.returnId!==returnId||p.organizationId!=null&&p.organizationId!==orgId))throw new NoWriteError('Unexpected VAT payment ownership');
  const evidence={salesTaxReturn:r,salesTaxPayments:[...payments].sort((a,b)=>a.id.localeCompare(b.id))};
  return {...evidence,revision:await hash(evidence),authoritySubmission:'not_verified'};
 }
@@ -52,7 +52,7 @@ export async function settleVat(read:BillyClient,write:BillyClient,db:JournalDB,
  const fingerprint=canonical({action:'set_test_vat_return_settlement',...a});
  if(pending.fingerprint!==fingerprint||pending.target!==orgId+':vatreturn:'+a.returnId)throw Error('Pending settlement input mismatch');
  const after=await vatPeriod(read,orgId,a.returnId),r=after.salesTaxReturn;
- if(a.isSettled!==true||r.isSettled!==true||typeof r.totalAmount!=='number'||!Number.isFinite(r.totalAmount)||r.totalAmount!==0&&r.isPayable!==true||r.settledAmount!==Math.abs(r.totalAmount)||r.isPaid!==false||r.skatTransactionId!=null||after.salesTaxPayments.length)throw Error('Pending settlement cannot be recovered automatically');
+ if(a.isSettled!==true||r.isSettled!==true||typeof r.totalAmount!=='number'||!Number.isFinite(r.totalAmount)||r.totalAmount!==0&&r.isPayable!==true||r.settledAmount!==Math.abs(r.totalAmount)||r.isPaid!==false||r.skatTransactionId!=null||after.salesTaxPayments.some(p=>p.isVoided!==true))throw Error('Pending settlement cannot be recovered automatically');
  const previous={salesTaxReturn:{...r,isSettled:false,settledAmount:null,...(r.totalAmount!==0?{isPayable:false}:{})},salesTaxPayments:after.salesTaxPayments};
  if(await hash(previous)!==a.expectedRevision||(await vatPeriod(read,orgId,a.returnId)).revision!==after.revision)throw Error('Pending settlement evidence differs from original revision');
  const result={before:{...previous,revision:a.expectedRevision,authoritySubmission:'not_verified'},after,reasoning:a.reasoning,authoritySubmission:'not_performed',payment:'not_performed',recovery:{previousState:'pending',nativeWrites:0}};
@@ -67,7 +67,7 @@ export async function settleVat(read:BillyClient,write:BillyClient,db:JournalDB,
  if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read VAT period again');
  z.iso.date().parse(r.startDate);z.iso.date().parse(r.endDate);
  if(r.startDate>r.endDate||r.endDate>=new Date().toISOString().slice(0,10))throw new NoWriteError('Only ended VAT periods can be settled or reopened');
- if(typeof r.isSettled!=='boolean'||r.isSettled===a.isSettled||r.isPaid!==false||before.salesTaxPayments.length)throw new NoWriteError('Expected changed settlement state and an unpaid period without payment records');
+ if(typeof r.isSettled!=='boolean'||r.isSettled===a.isSettled||r.isPaid!==false||before.salesTaxPayments.some((p:any)=>p.isVoided!==true))throw new NoWriteError('Expected changed settlement state and an unpaid period without payment records');
  if((await vatPeriod(read,orgId,a.returnId)).revision!==before.revision)throw new NoWriteError('VAT period changed during preflight');
  }catch(e){if(e instanceof NoWriteError)throw e;throw new NoWriteError('VAT period preflight failed; no write performed');}
  await write.put('/salesTaxReturns/'+a.returnId,{salesTaxReturn:{isSettled:a.isSettled}});
