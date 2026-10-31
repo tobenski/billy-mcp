@@ -6,9 +6,9 @@ import {jsonResult,errorResult} from './tools/helpers.js';
 import * as z from 'zod/v4';
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,100}$/);
 export const productDescriptions:Record<string,string>={
- create_test_product:'Create a TEST product with explicit DKK revenue account and existing organization-owned sales-tax ruleset. Persistent operation identity and duplicate-name check. No default prices, invoices, messages or bookkeeping. Locally tested; live acceptance pending discovery refresh.',
- update_test_product:'Change supplied name/description/account/ruleset on a journal-proven active test product with fresh get_product revision. Preserves all native prices and unrelated fields. Locally tested; live acceptance pending.',
- archive_test_product:'Archive or restore a journal-proven test product with fresh get_product revision; no deletion, price changes or ledger writes. Locally tested; live acceptance pending.',
+ create_test_product:'Create a TEST product with explicit DKK revenue account and existing organization-owned sales-tax ruleset. Persistent operation identity and duplicate-name check. No default prices, invoices, messages or bookkeeping. Live create/update/archive/restore verified.',
+ update_test_product:'Change supplied name/description/account/ruleset on a journal-proven active test product with fresh get_product revision. Preserves all native prices and unrelated fields. Live lifecycle verified.',
+ archive_test_product:'Archive or restore a journal-proven test product with fresh get_product revision; no deletion, price changes or ledger writes. Live lifecycle verified.',
 };
 export async function productSnapshot(read:BillyClient,org:string,productId:string){
  id.parse(productId);const {organization}=await read.get('/organization');if(organization?.id!==org)throw new NoWriteError('Organization mismatch');
