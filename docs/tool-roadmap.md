@@ -1,3 +1,11 @@
+# Current status — contract v3, 2026-10-31
+
+The two unsupported upload-link and OSS-report placeholders have been removed after a renewed native endpoint review. Enabled test discovery now contains **112 tools**, including **46 development-catalog tools**. Direct file upload, OSS configuration and native report readers remain available. Unsupported capabilities are documented separately and are not callable placeholders. See [endpoint investigation and removal](removed-native-placeholders.md).
+
+The following sections are historical checkpoints; their tool counts, reserved-contract lists and acceptance states are not the current status. Use `get_test_tool_status` for current availability.
+
+---
+
 # Latest follow-up: supplier drafts and products
 
 See [document lifecycle progress](document-lifecycle-progress.md). Four formerly reserved handlers are now live-tested (contact archive plus supplier draft create/update/delete). Three additional product contracts are implemented with local tests and await discovery/live acceptance. Current test discovery: **111 tools** with writes enabled, **99** when disabled. Remaining reserved handlers are still errors with no side effects; production's 51 reads are unchanged.
@@ -282,61 +290,6 @@ Status: implemented_phase1; se statusgennemgangen og funktionsdokumentationen fo
       "maximum": 1000
     }
   },
-  "additionalProperties": false
-}
-```
-
-### create_test_upload_link
-
-Reserve a direct document upload link; upload limits and URL expiry must be reported by implementation.
-
-Status: reserved; API: unverified.
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "operationId": {
-      "type": "string",
-      "format": "uuid",
-      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-    },
-    "reasoning": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
-    },
-    "fileName": {
-      "type": "string",
-      "minLength": 1
-    },
-    "contentType": {
-      "type": "string",
-      "enum": [
-        "application/pdf",
-        "image/png",
-        "image/jpeg"
-      ]
-    },
-    "sizeBytes": {
-      "type": "integer",
-      "exclusiveMinimum": 0,
-      "maximum": 9007199254740991
-    },
-    "daybookTransactionId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 100
-    }
-  },
-  "required": [
-    "operationId",
-    "reasoning",
-    "fileName",
-    "contentType",
-    "sizeBytes"
-  ],
   "additionalProperties": false
 }
 ```
