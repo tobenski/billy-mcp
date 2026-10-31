@@ -1586,3 +1586,7 @@ SVU, SYU og SOB kræver nu native Rubrik C; SF og KF kræver ingen omsætningsru
 ### Separat bogført bankgebyr
 
 Eksisterende `fee`-input i splitafstemningen verificerer nu en komplet, særskilt bogført DKK-gebyrpostering mod native finansposteringer og bogføringsjournal. Link, godkendelse, ophævelse og tilbageførsel er testet i testregnskabet. Automatisk gebyrbogføring og gebyrer på dokumentbetalinger er ikke implementeret. Se [valideringen](bank-fee-allocation.md).
+
+### Genoptagelse af leverandørkreditnota
+
+Oprettelse gemmer nu dokument- og requestgrundlag før native write. Samme pending operation kan afsluttes uden native writes efter fuld kontrol af en entydigt oprettet kreditnota og uændret kilde. Se [valideringen](supplier-credit-recovery.md).
