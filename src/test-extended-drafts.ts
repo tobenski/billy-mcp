@@ -1,3 +1,4 @@
+import {manualDraftAllowed,expandManualDkkLines} from './test-manual-corrections.js';
 import {isForeignCurrency,sourceCurrencies} from './test-currency.js';
 import {standardVatRates} from './test-vat.js';
 import type {McpServer} from '@modelcontextprotocol/server';
@@ -37,7 +38,7 @@ function normalize(lines:any[]){
  });
  if(balance!==0)throw new NoWriteError('Unbalanced draft');return result;
 }
-function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK',...(isForeignCurrency(l.currencyId)?{baseAmount:l.baseAmount}:{}),taxRateId:l.taxRateId??null})).sort();}
+function comparable(lines:any[]){return lines.map(l=>stable({accountId:l.accountId,amount:l.amount,side:l.side,text:l.text??'',currencyId:l.currencyId??'DKK',...(isForeignCurrency(l.currencyId)?{baseAmount:l.baseAmount}:{}),taxRateId:l.taxRateId??null,contraAccountId:l.contraAccountId??null,contraTaxRateId:l.contraTaxRateId??null})).sort();}
 export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){
  return async(a:any)=>{try{
  const {organization:org}=await read.get('/organization');if(org?.id!==orgId||org.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
@@ -52,18 +53,19 @@ export function extendedHandler(read:BillyClient,write:BillyClient,db:JournalDB,
  if(!creating&&!attachmentIds.length&&!['entryDate','description','voucherNo','lines'].some(k=>a[k]!==undefined))throw new NoWriteError('Supply a change');
  if(creating)validId(a.daybookId);else validId(a.id);
  return jsonResult(await journalRun(db,orgId,a.operationId,creating?'create:'+a.operationId:a.id,{action:name,...a},async()=>{
- let before:any;const sources:any[]=[];let taxRates:any[]=[];
+ let before:any;let existingLines:any[]=[];const sources:any[]=[];let taxRates:any[]=[];
  try{
  if(creating){const books=await read.fetchAll('/daybooks','daybooks',{organizationId:orgId});if(!books.some((b:any)=>b.id===a.daybookId))throw new NoWriteError('Invalid daybook');}
  else{
  before=await draftSnapshot(read,a.id,orgId);const h=before.daybookTransaction;
- if(h.state!=='draft'||!h.apiType?.startsWith('mcp-test:'))throw new NoWriteError('Only test-tool-created drafts can be changed');
+ const manual=manualDraftAllowed(read,orgId,h);existingLines=manual?expandManualDkkLines(before).daybookTransactionLines:before.daybookTransactionLines;
+ if(h.state!=='draft'||(!h.apiType?.startsWith('mcp-test:')&&!manual))throw new NoWriteError('Only test-tool-created drafts can be changed');
  if(before.revision!==a.expectedRevision)throw new NoWriteError('STALE_REVISION: read get_daybook_transaction again');
- if(before.daybookTransactionLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!sourceCurrencies.includes(l.currencyId)))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
+ if(existingLines.some((l:any)=>l.contraAccountId||l.contraTaxRateId||l.paidInvoiceId||l.paidBillId||l.paidExternalInvoiceId||!sourceCurrencies.includes(l.currencyId)))throw new NoWriteError('Existing draft has unsupported tax/currency/payment lines');
  }
- if(before)normalize(before.daybookTransactionLines.map((l:any)=>({...l,text:l.text??'',baseAmount:l.baseAmount??undefined,amountBasis:'gross'})));
+ if(before)normalize(existingLines.map((l:any)=>({...l,text:l.text??'',baseAmount:l.baseAmount??undefined,amountBasis:'gross'})));
  // Validate both existing and proposed tax codes, including header-only changes.
- taxRates=await standardVatRates(read,orgId,[...(lines??[]),...(before?.daybookTransactionLines??[])]);
+ taxRates=await standardVatRates(read,orgId,[...(lines??[]),...existingLines]);
  for(const sourceId of new Set(attachmentIds)){
  const {attachment}=await read.get('/attachments/'+sourceId);
  if(attachment?.id!==sourceId||attachment.organizationId!==orgId)throw new NoWriteError('Invalid attachment organization or ID');
