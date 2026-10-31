@@ -1,3 +1,5 @@
+> This filename is historical, not a final completion claim. See [current implementation and remaining work](partial-payments-multiline.md).
+
 # Autonomous continuation and remaining contract boundaries — 2026-10-31
 
 The user does not need to approve each development batch or refresh discovery for these changes. Existing names and input schemas are retained; discovery remains114 tools. The isolated test Worker is the only deployment changed.
@@ -24,7 +26,7 @@ journalRun previously persisted a classified failure only when its result column
 
 get_test_write_operation now provides fresh read-only evidence for document booking, document payment/void, FX checks, VAT payment/void/settlement, daybook booking and split-bank operations. For document operations it returns original source records, allocations, related payment headers, transactions and postings, with ownership checks and bounded fan-out. A fresh observation never proves causation, completes a journal or authorizes retry. There is no writable client or database mutation in the evidence reader. Live checks covered the EUR supplier payment and a VAT refund operation.
 
-## Final verification
+## Verification of that checkpoint
 
 355 automated tests pass. TypeScript checking, Worker bundle build and git whitespace checks pass. Regression tests cover preserved evidence, concurrent updates, ownership, malformed references, exact historical dates, missing observations, units, no credential forwarding, redirects and response limits. This continuation made no native Billy accounting writes. Earlier test accounting cleanup therefore remains intact; no new financial fixture needs reversal.
 
