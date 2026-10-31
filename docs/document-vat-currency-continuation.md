@@ -19,4 +19,14 @@ The isolated test deployment was updated. The production deployment was not chan
 
 ## Remaining scope
 
-Partial credit notes, invoice discounts/mixed sales codes, document-payment fees, standalone manual FX drafts, foreign bank accounts and broader foreign purchase-VAT booking remain restricted. Dedicated native OSS-report and signed voucher-upload contracts remain reserved. These limitations are not completed functionality.
+Foreign partial credit notes, invoice discounts/mixed sales codes, document-payment fees, standalone manual FX drafts, foreign bank accounts and broader foreign purchase-VAT booking remain restricted. Dedicated native OSS-report and signed voucher-upload contracts remain reserved. These limitations are not completed functionality.
+
+## Sequential DKK credits
+
+Customer and supplier documents now support up to four sequential partial/full DKK credits. Remaining amounts are checked per product/VAT or expense/VAT group against all earlier verified credits and native allocations. Original and earlier credit ledgers are reverified; unapproved credits and unexplained payments block further credits. Over-crediting is rejected before native writes. Foreign credits remain full-only.
+
+Invoice credit creation can recover an uncertain response by finding the exact operation-marked draft and verifying its header, lines, original source revision and attachment set. Recovery completes only the journal, with zero native writes.
+
+Configuration reads are memoized within one invocation. Documents, lines, allocations, postings and period locks remain fresh. Financial snapshots of earlier posted credits avoid unrelated attachment reads while retaining ownership and stability checks. A four-credit native acceptance flow completed without interruption after this reduction. All synthetic source balances and VAT effects were restored.
+
+381 automated tests, TypeScript checking and Worker build pass at this checkpoint.
