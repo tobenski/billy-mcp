@@ -12,21 +12,18 @@ Uncertain failures inside the test write journal now retain a classified diagnos
 
 This applies to future failures that reach the journal's uncertain-outcome handler. It does not reconstruct historical errors or change the handling of preflight refusals that performed no write. Raw Billy business-error messages are deliberately not retained.
 
-## Live validation
+## Current live validation — 2026-10-31
 
-Both historical pending bookings were verified against their original revisions and native postings, and completed without native writes.
+Standard-code VAT, explicit manual deduction splits, foreign source amounts and exact DKK-bank reconciliation are described in `currency-drafts.md`. Own deduction codes remain retired.
 
-Synthetic transactions 77 and 78 created and reversed a Q3 purchase (100 expense, 25 VAT, 125 offline bank), leaving each affected account and the Q3 report net zero. The zero period was settled and reopened. Final state matches the original period revision, `isSettled=false`, `settledAmount=null`, with no payments. Current-quarter settlement was refused.
+Ended unpaid periods were settled and reopened with native totals 0, +150 and -150 DKK. Nonzero settlement sets `isPayable=true` and `settledAmount=abs(totalAmount)`; reopening restores false/null. The validator handles those observed transitions and requires all other period/report/payment data to remain unchanged. Lost-response recovery reconstructs and hashes the exact pre-settlement evidence and re-reads the current evidence before completing the journal with zero native writes. Different/ambiguous evidence stays pending.
 
-Billy sets `settledAmount` as well as the flag. The validator checks it separately. An exact-revision recovery path handles only the proven existing zero-period settlement without another native write. Nonzero settlements, settled-period corrections and authority submission are not validated by this test.
+Billy generated settlement/reopening ledger entries (110/111 and 114/115). Reopening voided the native settlement entries; all test-created postings, including these native entries, must be included when auditing cleanup. Original purchase/sales tests were fully reversed. Q3 and Q4 native VAT-period revisions are restored, both unsettled and unpaid, with no payment records.
 
-## Currency and OSS
+Open cross-period reversal was tested with +150 DKK in Q3 and -150 DKK in Q4; explicit cleanup restored both periods. A settled Q3 rejects new VAT booking before native writes. This applies to coded VAT and direct entries on native VAT-role accounts. Reopen explicitly after reviewing the period; the tool does not silently modify a filed period. Fiscal locking date is checked inclusively before booking, with local boundary tests; the organization's real lock was not changed for testing.
 
-- EUR drafts with ordinary Danish K/S VAT or no VAT support explicit positive two-decimal DKK `baseAmount`. Create/update balance in DKK and verify exact readback. EUR booking/full reversal on DKK accounts with ordinary K/S VAT and without VAT are live-tested, including DKK rounding and complete report restoration. Other EUR tax codes, other foreign currencies, automatic rates and FX bank matching remain blocked. See `currency-drafts.md`.
-- OSS has no implemented write/reporting workflow or validated tax-code mapping. Existing EU-sale Rubrik B tests do not establish OSS support.
-- Unsupported tax codes are rejected by an explicit standard-code validator. Do not route OSS transactions through an ordinary EU code as a substitute.
-- Next currency work requires native invoice/entry conversion evidence, rounding, payment differences, bank matching and reversals. OSS requires a separate capability investigation and test specification.
+## Remaining separate capabilities
 
-## Remaining VAT work
+Actual authority submission is not implemented or performed. OSS configuration/reporting and customer-level EU-sales listing have reserved contracts, with no verified native reporting endpoint. Recorded invoice/bill/VAT payments, payment exchange differences and split bank allocations are reserved. Stubs are not live implementations. Current rate metadata is not historical invoice-rate evidence.
 
-Cross-period corrections, settled periods and fiscal locks; nonzero settlement and payment reconciliation; separate EU-sales invoice/customer/VAT-number and listing workflow; currency and OSS. Actual authority submission is a separate explicitly authorized action, not a consequence of setting Billy's recorded settlement flag.
+Production and real bank integration accounts were not changed. Optimistic checks cannot lock out concurrent Billy UI edits; uncertain writes retain their journal lock.
