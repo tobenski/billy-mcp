@@ -1,3 +1,4 @@
+import {isSplitMatch,splitBankHandler} from './test-bank-allocations.js';
 import {assertBookingDateOpen,assertVatPeriodsOpen} from './test-period-guard.js';
 import {isForeignCurrency,foreignCurrencies} from './test-currency.js';
 import {standardVatRates,verifyVatPostings} from './test-vat.js';
@@ -50,7 +51,7 @@ export const finalizeDescriptions:Record<string,string>={
 export function finalizeHandler(read:BillyClient,write:BillyClient,db:JournalDB,orgId:string,name:string){return async(a:any)=>{try{
  const {organization}=await read.get('/organization');if(organization?.id!==orgId||organization.baseCurrencyId!=='DKK')throw new Error('Expected DKK test organization');
  const booking=name==='book_test_daybook_draft';id.parse(booking?a.daybookTransactionId:a.matchId);
- if(!booking){const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:a.matchId});if(links.some((l:any)=>l.matchId!==a.matchId))throw new NoWriteError('Unexpected match association');if(links.length>1){const {correctionGroupApprove}=await import('./test-bank-correction-group.js');return correctionGroupApprove(read,write,db,orgId,a);}}
+ if(!booking){const links=await read.fetchAll('/bankLineSubjectAssociations','bankLineSubjectAssociations',{matchId:a.matchId});if(links.some((l:any)=>l.matchId!==a.matchId))throw new NoWriteError('Unexpected match association');if(links.length>1){if(await isSplitMatch(read,db,orgId,a.matchId))return splitBankHandler(read,write,db,orgId,name)(a);const {correctionGroupApprove}=await import('./test-bank-correction-group.js');return correctionGroupApprove(read,write,db,orgId,a);}}
  return jsonResult(await journalRun(db,orgId,a.operationId,booking?a.daybookTransactionId:'bankmatch:'+a.matchId,{action:name,...a},async()=>{
  let before:any,bank:any,ledger:any,knownTransaction:any;let taxRates:any[]=[];
  try{
